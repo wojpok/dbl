@@ -1,3 +1,5 @@
+import /List
+
 import open Width
 
 rec
@@ -43,5 +45,37 @@ rec
     | LEmpty
     | LColor of Color
     | LColorPop
+
+  pub method toString (c : Color) = 
+    match c with
+    | Black => "Black"
+    | Red   => "Red"
+    | Green => "Green"
+    | Yellow => "Yellow"
+    | Blue  => "Blue"
+    | Magenta => "Magenta"
+    | Cyan  => "Cyan"
+    | White => "White"
+    end
+
+  pub method toString (d : Doc) = 
+    "(" + d.tree.toString + " :: " + d.width.toString + ")"
+
+  pub method toString (dt : DocTree) = 
+    match dt with
+    | DEmpty => "Empty"
+    | DStr str => "Str " + str
+    | DShift doc => "&" + doc.toString
+    | DReset doc => "*" + doc.toString
+    | DSeq ds => "Seq " + List.foldRight (fn (e : Doc) a => e.toString + " " + a) ds ""
+    | DStack ds => "Stack " + List.foldRight (fn (e : Doc) a => e.toString + " " + a) ds ""
+    | DLayout n doc => "Layout " + n.toString + " " + doc.toString
+    | DFlex n => "Flex " + n.toString
+    | _ => "?"
+    end
+
+  pub method toString {type X, method toString : X ->> String} (self : List X) =
+    "[" + List.foldRight (fn (e : X) a => e.toString + ", " + a) self "" + "]"
+    
 end
 

@@ -1,10 +1,28 @@
 import open Titanic/Test
 import open Titanic/Combinators
 import open Titanic/Engine
+import open Titanic/Types
 
 let _ = Test.test ()
 
-let exFmt = (ppStr "def" <+> ppStr " " <+> ppStr "xyz")
+{#
+(Layout 10 
+  (*
+    (Seq 
+      (Seq 
+        (Str def :: Fixed (3/0)) 
+        (Flex 10 :: Fixed (0/10)
+      ) :: Fixed (3/10)) 
+      (Str xyz :: Fixed (3/0)
+    ) :: Fixed (6/10)
+  ) :: Fixed (6/10)
+) :: Fixed (10/0))
+
+#}
+
+let exFmt = ppLayout 20 (ppReset (ppStr "def" <+> ppFlex 10 <+> ppStr "xyz"))
+
+let _ = printStrLn exFmt.toString
 
 let _ = showDoc exFmt
 

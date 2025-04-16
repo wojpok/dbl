@@ -46,3 +46,8 @@ let flatToString cs =
 pub let reduceLines lines = 
   let flats = List.map (fn (l : Line) => flatToString (flatLine (l.concat (LChr '\n')) [])) lines
   in List.foldRight (fn l (r : String) => r + l) (flats : List String) ""
+
+pub let assignSpreadState (n : Int) (perPoint, overflow) =
+  let over = n.min overflow
+  let size = n * perPoint + over
+  in (size, (perPoint, overflow - over))

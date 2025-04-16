@@ -76,6 +76,22 @@ let eLine n = LFill n " "
 
 let qCtx lines len = ctxBox lines (eLine len) len
 
+let nextShift () = 
+  match getShifts () with
+  | x :: _ => x
+  | _ => 0
+  end
+
+let updateSpread (offset : Int) (step : Step) =
+  let ns = nextShift () in
+  putFlex (populateSpread (ns - offset) step)
+
+let assignSpread (n : Int) = 
+  let spread = getFlex ()
+  let (size, ns) = assignSpreadState n spread
+  let _ = putFlex ns
+  in size
+
 let rec toLines (size : Int) (offset : Int) (d : Doc) =
   match d.tree with
   | DEmpty => ctxBox [] LEmpty 0
@@ -97,6 +113,18 @@ let rec toLines (size : Int) (offset : Int) (d : Doc) =
         in ctxBox lines (ctxHead.fill.concat ctxTail.fill) (ctxHead.size + ctxTail.size)
       end
     in iter size offset ds
+  | DReset d =>
+    let shifts = allocateShift AMFloat size d.width
+    let recComp () =
+      let _ = putSteps d.width.steps
+      let _ = putShifts shifts
+      let _ = updateSpread offset d.width.singleStep
+      in toLines (List.foldLeft (+) 0 shifts) 0 d
+    in bt recComp ()
+  | DLayout size doc => toLines size offset doc
+  | DFlex n => 
+    let s = assignSpread n in
+    qCtx [LFill s " "] s
   | _ => toLines 0 0 (doc DEmpty (fixedWidth 0))
   end
 
@@ -105,3 +133,6 @@ pub let showDoc (doc : Doc) =
   let ctx = toLines width 0 doc
   let str = reduceLines ctx.lines
   in printStrLn str
+
+let _ = printStrLn (allocateShift AMFloat 10 (fixedWidth 6 >. addFlex 10)).toString
+
