@@ -1,7 +1,9 @@
 import /Base/Int
 import /List
 
-abstr data Step = { fixed : Int, flex : Int }
+pub data Step = { fixed : Int, flex : Int }
+
+pub method toPair (s : Step) = (s.fixed, s.flex)
 
 abstr data rec Width =
   | WShift of Step, Step, Width
@@ -88,8 +90,8 @@ pub let rec allocateShift (mode : AllocMode) (max : Int) (width : Width) =
        let totFix = List.foldLeft (+) 0 fixes
         
        let toSpend = max - totFix
-       let avgSpend = toSpend / totFix
-       let leftover = toSpend % totFix
+       let avgSpend = toSpend / totFlex
+       let leftover = toSpend % totFlex
 
        let ~onError () = []
        
@@ -112,6 +114,11 @@ pub let populateSpread (size : Int) (step : Step) =
     (let perPoint = extra / step.flex
      let overflow = extra % step.flex
      in (perPoint, overflow))
+
+pub let assignSpreadState (n : Int) (perPoint, overflow) =
+  let over = n.min overflow
+  let size = n * perPoint + over
+  in (size, (perPoint, overflow - over))
 
 pub method toString (self : Step) =
   "(" + self.fixed.toString + "/" + self.flex.toString + ")"

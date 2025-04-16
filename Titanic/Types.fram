@@ -59,7 +59,7 @@ rec
     end
 
   pub method toString (d : Doc) = 
-    "(" + d.tree.toString + " :: " + d.width.toString + ")"
+    "(" + d.width.toString + " -> " + d.tree.toString + ")"
 
   pub method toString (dt : DocTree) = 
     match dt with
@@ -71,6 +71,7 @@ rec
     | DStack ds => "Stack " + List.foldRight (fn (e : Doc) a => e.toString + " " + a) ds ""
     | DLayout n doc => "Layout " + n.toString + " " + doc.toString
     | DFlex n => "Flex " + n.toString
+    | DBox d => "Box " + d.toString
     | _ => "?"
     end
 

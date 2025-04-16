@@ -92,6 +92,24 @@ let assignSpread (n : Int) =
   let _ = putFlex ns
   in size
 
+let popShift () = 
+  match getShifts () with
+  | x :: y :: tl => 
+    let _ = putShifts (x + y :: tl) 
+    in x
+  | [res] => res
+  | [] => 0
+  end
+
+let popSpread nextShift size = 
+  match getSteps () with
+  | [] => putFlex (0, 0)
+  | [x] => putFlex (snd (assignSpreadState size x.toPair))
+  | x :: xs => 
+    putSteps xs;
+    putFlex (snd (assignSpreadState nextShift x.toPair))
+  end
+
 let rec toLines (size : Int) (offset : Int) (d : Doc) =
   match d.tree with
   | DEmpty => ctxBox [] LEmpty 0
@@ -113,6 +131,23 @@ let rec toLines (size : Int) (offset : Int) (d : Doc) =
         in ctxBox lines (ctxHead.fill.concat ctxTail.fill) (ctxHead.size + ctxTail.size)
       end
     in iter size offset ds
+  | DStack ds =>
+    # let size' = assignSpread (d.width.singleStep.flex)
+    let rec iter (ds : List Doc) =
+      match ds with
+      | [] => []
+      | d :: ds =>
+        let proc () =
+          {# let _ = putSteps d.width.steps
+          # let _ = updateSpread offset d.width.singleStep
+          # let _ = 
+          in #} toLines size offset d
+        in bt proc () :: iter ds
+      end
+    let ctxs = iter ds
+    let maxs = List.foldRight (fn (x : CtxBox) y => x.size.max y) ctxs 0
+    let aligned = List.map (fn (ctx : CtxBox) => alignLines maxs ctx.size ctx.lines) ctxs
+    in qCtx (List.concat aligned) maxs
   | DReset d =>
     let shifts = allocateShift AMFloat size d.width
     let recComp () =
@@ -121,10 +156,25 @@ let rec toLines (size : Int) (offset : Int) (d : Doc) =
       let _ = updateSpread offset d.width.singleStep
       in toLines (List.foldLeft (+) 0 shifts) 0 d
     in bt recComp ()
+  | DShift d =>
+    let shift = popShift ()
+    let nextShift = bt popShift () # TODO improve this ugly call
+    let _ = popSpread (nextShift - shift - 1) size
+    let missingShift = shift - offset
+    let ctx = toLines (size - missingShift) (offset + missingShift) d
+    let lines = linesFill (eLine missingShift) [] ctx.fill ctx.lines
+    in qCtx lines (missingShift + ctx.size)
   | DLayout size doc => toLines size offset doc
   | DFlex n => 
     let s = assignSpread n in
     qCtx [LFill s " "] s
+  | DBox doc =>
+    let ctx = toLines (size - 2) (offset + 1) doc
+    let w = ctx.size
+    let mapped = List.map (fn (l : Line) => LStr "│" >. concat l >. concat (LStr "│")) ctx.lines
+    let topLine    = LStr "╭" >. concat (LFill w "─") >. concat (LStr "╮")
+    let bottomLine = LStr "╰" >. concat (LFill w "─") >. concat (LStr "╯")
+    in qCtx ([topLine] + mapped + [bottomLine]) (w + 2)
   | _ => toLines 0 0 (doc DEmpty (fixedWidth 0))
   end
 
@@ -134,5 +184,7 @@ pub let showDoc (doc : Doc) =
   let str = reduceLines ctx.lines
   in printStrLn str
 
-let _ = printStrLn (allocateShift AMFloat 10 (fixedWidth 6 >. addFlex 10)).toString
+let _ = printStrLn (allocateShift AMFloat 27 (fixedWidth 18 >. shift >. addFixed 9)).toString
+# let _ = let (x, y) = (populateSpread 20 (fixedWidth 8 >. addFlex 20 >. singleStep))
+#         in printStrLn (x.toString + " " + y.toString)
 

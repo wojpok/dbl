@@ -20,11 +20,14 @@ let _ = Test.test ()
 
 #}
 
-let exFmt = ppLayout 20 (ppReset (ppStr "def" <+> ppFlex 10 <+> ppStr "xyz"))
+let exFmt = ppLayout 20 (ppReset (ppBox (ppFlex 1 <+> ppStr "def" <+> ppFlex 3 <+> ppStr "xyz")))
 
 let _ = printStrLn exFmt.toString
 
 let _ = showDoc exFmt
 
-let _ = printStrLn (exampleComputation () >. toString)
+let exFmt2 = ppReset ((ppStr "asdasdasd" <+> ppShift (ppStr "=========")) /+/ (ppStr "asda" <+> ppShift (ppStr "==================")))
 
+let _ = printStrLn exFmt2.toString
+
+let _ = showDoc exFmt2
