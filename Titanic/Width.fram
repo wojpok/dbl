@@ -5,7 +5,7 @@ pub data Step = { fixed : Int, flex : Int }
 
 pub method toPair (s : Step) = (s.fixed, s.flex)
 
-abstr data rec Width =
+pub data rec Width =
   | WShift of Step, Step, Width
   | WFixed of Step
 
