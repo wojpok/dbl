@@ -1,9 +1,10 @@
 
-import Titanic/Test
+import open Titanic/Test
 import open Titanic/Combinators
-import Titanic/Engine
-import Titanic/Types
-import open Titanic/Parser
+import open Titanic/Engine
+import open Titanic/Types
+# import open Titanic/Parser
+import open Titanic/Formatter
 
 #let exFmt = ppLayout 20 (ppReset (ppBox (ppFlex 1 <+> ppStr "def" <+> ppFlex 3 <+> ppStr "xyz")))
 #
@@ -17,4 +18,16 @@ import open Titanic/Parser
 #
 #let _ = Engine.showDoc exFmt2
 
-let _ = printParse (runParser parseSRDocNode ("(flex:10 {color :red} ' ' 10 && (node))".toList))
+# let _ = printParse (runParser parseSRDocNode ("(flex:10 {color :red} ' ' 10 && (node))".toList))
+
+let sty = 
+  CoreStyle { name = "box", args = ArgDict {args = []}, interp = [
+    CoreInterp { num = 0, style =
+      CoreStyle { name = "int", args = ArgDict {args = [("im", SStr "x")]}, interp = [] }
+  }]}
+
+let _ = 
+  match runStyled 10 sty with
+  | Left msg => printStrLn ("Error " + msg)
+  | Right doc => showDoc doc
+  end

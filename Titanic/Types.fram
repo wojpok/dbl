@@ -77,6 +77,30 @@ rec
 
   pub method toString {type X, method toString : X ->> String} (self : List X) =
     "[" + List.foldRight (fn (e : X) a => e.toString + ", " + a) self "" + "]"
-    
+  
+  pub data SValue =
+    | SStr   of String
+    | SInt   of Int
+    | SColor of Color
+  
+  pub data ArgDict    = { args : List (Pair String SValue) }
+  pub data CoreStyle  = { name : String, args : ArgDict, interp : List CoreInterp}
+  pub data CoreInterp = { num : Int, style : CoreStyle }
+
+  pub method toString (s : SValue) =
+    match s with
+    | SStr str => "'" + str + "'"
+    | SInt i   => i.toString
+    | SColor c => c.toString
+    end
+
+  pub method toString (s : ArgDict) = 
+    "{" + List.foldRight (fn ((x, y) : Pair String SValue) acc => x + ":" + y.toString + ", " + acc) s.args "}"
+
+  pub method toString (s : CoreStyle) =
+    "(" + s.name + " " + s.args.toString + " " + s.interp.toString + ")"
+  
+  pub method toString (s : CoreInterp) =
+    "(" + s.num.toString + " " + s.style.toString + ")"
 end
 

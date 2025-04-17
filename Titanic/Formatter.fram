@@ -1,0 +1,95 @@
+import /List
+
+import open Types
+import open Combinators
+
+data Fail E = 
+  { fail : {type X} -> String ->[E] X
+  , bt   : Unit ->[E] Bool
+  }
+
+let runFail {E, type X} (calc : {E} -> Fail E ->[E, _] X) =
+  handle fail =
+    Fail 
+      { fail = effect msg => Left msg
+      , bt   = effect _ / r => 
+        match r True with
+        | Left _ => r False
+        | Right x => Right x
+        end 
+      }
+    return x => Right x
+  in calc fail
+
+let rec bts {E} calc (f : Fail E) =
+  match calc with
+  | [] => f.fail ""
+  | (x : Fail _ ->> _) :: xs =>
+    if f.bt()
+      then x f
+      else bts xs f
+  end
+
+let rec lookup {E} (key : String) xs (f : Fail E) =
+  match xs with
+  | [] => f.fail ("Cant find element " + key)
+  | (x, v) :: xs =>
+    if key == x then
+      v
+    else
+      lookup key xs f
+  end
+
+let getSStr key (args : ArgDict) (f : Fail _) = 
+  match lookup key args.args f with
+  | SStr str => str
+  | _ => f.fail "Type mismatch"
+  end
+
+let getSStrI key args (dfl : String) (f : Fail _) = 
+  if f.bt() then
+    bts [ getSStr "im" args, getSStr key args] f
+  else
+    dfl
+
+let assertSingle (xs : List CoreInterp) (f : Fail _) =
+  match xs with
+  | [x] => x.style
+  | _ => f.fail "Arrity mismatch"
+  end
+
+let rec fmtLift {E, type X}
+                (cont  : CoreStyle -> Fail E -> X ->[E] Doc) 
+                (style : CoreStyle) 
+                (f     : Fail E) 
+                (val   : X) =
+  let name = style.name in
+  if name == "box" then
+    (let tail = assertSingle style.interp f in
+     ppBox (fmtLift cont tail f val))
+  else 
+    cont style f val
+
+pub method styled {E} (self : Int) (style : CoreStyle) (f : Fail E) =
+  let formatSelf (style : CoreStyle) (f : Fail _) (self : Int) = 
+    let fmt = getSStrI "fmt" style.args "n" f in
+    if fmt == "n" then
+      ppStr self.toString
+    else if fmt == "x" then
+      ppStr "hex not implemented yet"
+    else
+      f.fail ("Unknown format " + fmt)
+  in fmtLift formatSelf style f self
+
+pub let runStyled {type X, method styled : {E} -> X -> CoreStyle -> Fail E ->[E] _} (v : X) (sty : CoreStyle) = 
+  handle fail =
+    Fail 
+      { fail = effect msg => Left msg
+      , bt   = effect _ / r => 
+        match r True with
+        | Left _ => r False
+        | Right x => Right x
+        end 
+      }
+    return x => Right x
+  in v.styled sty fail

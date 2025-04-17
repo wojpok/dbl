@@ -2,8 +2,6 @@ import /List
 
 import open Types
 
-let _ = printStrLn "Parser start"
-
 data Stream = { stream : List Char, position : Int } 
 
 method seek (stream : Stream) =
@@ -84,10 +82,10 @@ let many1 {E} (v : SP E ->[E] _) (p : SP E) =
   let tl = many v p
   in hd :: tl
 
-let (*>) {E} (p1 : SP E ->[E] _) (p2 : SP E ->[E] _) p =
+let (*>) {E, type X, type Y} (p1 : SP E ->[E] X) (p2 : SP E ->[E] Y) (p : SP E) =
   let _ = p1 p in p2 p
 
-let (<*) {E} (p1 : SP E ->[E] _) (p2 : SP E ->[E] _) p =
+let (<*) {E, type X, type Y} (p1 : SP E ->[E] X) (p2 : SP E ->[E] Y) (p : SP E) =
   let res = p1 p 
   let _   = p2 p
   in res
@@ -104,7 +102,7 @@ let rec flips {E} (ps : List (SP E ->[E] _)) (p : SP E) =
       flips ps p
   end
 
-let lexeme v = v <* many (isChar isWhite)
+let lexeme {E} v (p : SP E) = (v <* many (isChar isWhite)) p
 
 let sepBy {E} sep v (p : SP E) = 
   if p.flip() then 
@@ -112,47 +110,13 @@ let sepBy {E} sep v (p : SP E) =
   else
     []
 
-let parseIndent = lexeme (many1 (isChar isLetter))
-
-let parseCD p =
-  let cs = parseIndent p
-  let ds = parseIndent p
-  in cs + ds
-
-pub let manyC = runParser (parseCD)
+let parseIndent {E} (p : SP E) = lexeme (many1 (isChar isLetter)) p
 
 pub let printParse {type X, method toString : X ->> String} (v : Either String X) = 
   match v with
   | Left str => printStrLn str 
   | Right x  => printStrLn x.toString
   end
-
-rec
-  pub data SValue =
-    | SStr   of String
-    | SInt   of Int
-    | SColor of Color
-  
-  pub data ArgDict    = { args : List (Pair String SValue) }
-  pub data CoreStyle  = { name : String, args : ArgDict, interp : List CoreInterp}
-  pub data CoreInterp = { num : Int, style : CoreStyle }
-
-  pub method toString (s : SValue) =
-    match s with
-    | SStr str => "'" + str + "'"
-    | SInt i   => i.toString
-    | SColor c => c.toString
-    end
-
-  pub method toString (s : ArgDict) = 
-    "{" + List.foldRight (fn ((x, y) : Pair String SValue) acc => x + ":" + y.toString + ", " + acc) s.args "}"
-
-  pub method toString (s : CoreStyle) =
-    "(" + s.name + " " + s.args.toString + " " + s.interp.toString + ")"
-  
-  pub method toString (s : CoreInterp) =
-    "(" + s.num.toString + " " + s.style.toString + ")"
-end
 
 let readNumber xs = 
   let rec iter xs (acc : Int) = 
@@ -162,9 +126,9 @@ let readNumber xs =
     end
   in iter xs 0
 
-pub let parseNumber p = let res = lexeme (many1 (isChar isDigit)) p in readNumber res
+let parseNumber {E} (p : SP E)  = let res = lexeme (many1 (isChar isDigit)) p in readNumber res
 
-let parseString = lexeme (char ''' *> many (isChar (fn c => ''' != c)) <* char ''')
+let parseString {E} (p : SP E) = lexeme (char ''' *> many (isChar (fn c => ''' != c)) <* char ''') p
 
 let parseKeyword {E} kw (p : SP E) =
   let res = parseIndent p in
@@ -175,7 +139,7 @@ let parseKeyword {E} kw (p : SP E) =
 
 let ($) f x = f x
 
-pub let parseArgValue {E} (p : SP E) =
+let parseArgValue {E} (p : SP E) =
   if p.flip () then
     SInt $ parseNumber p
   else if p.flip () then
@@ -195,12 +159,13 @@ pub let parseArgValue {E} (p : SP E) =
   else
     SStr $ (charListToStr $ parseIndent p)
 
-pub let parseStyleDict {E} (p : SP E) =
-  let parseKv {E} (p : SP E) =
-    let key = parseIndent p
-    let _ = lexeme (char ':') p
-    let value = parseArgValue p
-    in (charListToStr key, value) 
+let parseKv {E} (p : SP E) =
+  let key = parseIndent p
+  let _ = lexeme (char ':') p
+  let value = parseArgValue p
+  in (charListToStr key, value) 
+
+let parseStyleDict {E} (p : SP E) =
   let _ = lexeme (char '{') p
   let res = sepBy (lexeme (char ',')) parseKv p
   let _ = lexeme (char '}') p
@@ -219,7 +184,7 @@ rec
     else
       parseDocNode p
 
-  pub let parseDocNode {E} (p : SP E) = 
+  let parseDocNode {E} (p : SP E) = 
     let _ = lexeme (char '(') p
     let name = charListToStr $ parseIndent p
     let immediate =
@@ -240,7 +205,7 @@ rec
     let _ = lexeme (char ')') p
     in CoreStyle { name, args, interp }
 
-  pub let parseInterp {E} (p : SP E) =
+  let parseInterp {E} (p : SP E) =
     let iStr {E} (p : SP E) = 
       let str = SStr (charListToStr $ parseString p)
       in CoreInterp 
