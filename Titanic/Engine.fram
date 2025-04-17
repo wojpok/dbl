@@ -133,7 +133,7 @@ let rec toLines (size : Int) (offset : Int) (d : Doc) =
       end
     in iter size offset ds
   | DStack ds =>
-    # let size' = assignSpread (d.width.singleStep.flex)
+    let size' = assignSpread (d.width.singleStep.flex)
     let rec iter (ds : List Doc) =
       match ds with
       | [] => []

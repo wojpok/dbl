@@ -1,33 +1,20 @@
-import open Titanic/Test
+
+import Titanic/Test
 import open Titanic/Combinators
-import open Titanic/Engine
-import open Titanic/Types
+import Titanic/Engine
+import Titanic/Types
+import open Titanic/Parser
 
-let _ = Test.test ()
+#let exFmt = ppLayout 20 (ppReset (ppBox (ppFlex 1 <+> ppStr "def" <+> ppFlex 3 <+> ppStr "xyz")))
+#
+#let _ = Engine.showDoc (Engine.debugDoc exFmt)
+#
+#let _ = Engine.showDoc exFmt
+#
+#let exFmt2 = ppReset ((ppStr "asdasdasd" <+> ppShift (ppStr "=========")) /+/ (ppStr "asda" <+> ppShift (ppStr "==================")))
+#
+#let _ = Engine.showDoc (Engine.debugDoc exFmt2)
+#
+#let _ = Engine.showDoc exFmt2
 
-{#
-(Layout 10 
-  (*
-    (Seq 
-      (Seq 
-        (Str def :: Fixed (3/0)) 
-        (Flex 10 :: Fixed (0/10)
-      ) :: Fixed (3/10)) 
-      (Str xyz :: Fixed (3/0)
-    ) :: Fixed (6/10)
-  ) :: Fixed (6/10)
-) :: Fixed (10/0))
-
-#}
-
-let exFmt = ppLayout 20 (ppReset (ppBox (ppFlex 1 <+> ppStr "def" <+> ppFlex 3 <+> ppStr "xyz")))
-
-let _ = showDoc (debugDoc exFmt)
-
-let _ = showDoc exFmt
-
-let exFmt2 = ppReset ((ppStr "asdasdasd" <+> ppShift (ppStr "=========")) /+/ (ppStr "asda" <+> ppShift (ppStr "==================")))
-
-let _ = showDoc (debugDoc exFmt2)
-
-let _ = showDoc exFmt2
+let _ = printParse (runParser parseSRDocNode ("(flex:10 {color :red} ' ' 10 && (node))".toList))

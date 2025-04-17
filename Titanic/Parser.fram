@@ -1,0 +1,260 @@
+import /List
+
+import open Types
+
+let _ = printStrLn "Parser start"
+
+data Stream = { stream : List Char, position : Int } 
+
+method seek (stream : Stream) =
+  match stream.stream with
+  | _ :: xs => Stream { stream = xs, position = stream.position + 1 }
+  | _ => stream
+  end
+
+method toString (strem : Stream)
+  = "Stream " + strem.position.toString + " " + strem.stream.toString
+
+data SP E = 
+  { peek : Unit ->[E] Option Char
+  , seek : Unit ->[E] Unit
+  , eof  : Unit ->[E] Bool
+  , rev  : Stream ->[E] Unit
+  , fail : {type X} -> String ->[E] X
+  , flip : Unit ->[E] Bool
+  }
+
+pub let runParser {type X} (p : {E} -> SP E ->[E] X) (stream : List Char) =
+  handle parser =
+    let rev = effect stream / r => fn _ => r () stream
+    let eof = effect _ / r => 
+      fn (s : Stream) => 
+        match s.stream with
+        | [] => r True  s
+        | _  => r False s
+        end
+    let peek = effect _ / r => 
+      fn (s : Stream) =>
+        match s.stream with
+        | x :: _ => r (Some x) s
+        | _      => r  None    s
+        end
+    let seek = effect _ / r => fn s => r () s.seek
+    let fail = effect msg => fn _ => Left msg
+    let flip = effect _ / r => fn s => 
+      match r True s with
+      | Left _ => r False s
+      | Right x => Right x
+      end
+    in SP { peek, seek, eof, rev, fail, flip } 
+    return x => fn _ => Right x
+    finally c => c (Stream { stream, position = 0 })
+  in p parser
+
+let char {E} (c : Char) (p : SP E) =
+  match p.peek () with
+  | Some c' => 
+    if c == c' 
+      then (p.seek (); c) 
+      else p.fail "Invalid character"
+  | None => p.fail "Unexpected EOF"
+  end
+
+let isChar {E} pred (p : SP E) =
+  match p.peek () with
+  | Some c' => 
+    if pred c' 
+      then (p.seek (); c') 
+      else p.fail "Invalid character"
+  | None => p.fail "Unexpected EOF"
+  end
+
+let isWhite (c : Char) = (c == ' ' || c == '\n' || c == '\t')
+let isLetter (c : Char) = ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z')
+let isDigit (c : Char) = ('0' <= c && c <= '9')
+
+let rec many {E} (v : SP E -> [E] _) (p : SP E) =
+  if p.flip () then
+    v p :: many v p
+  else 
+    []
+
+let many1 {E} (v : SP E ->[E] _) (p : SP E) =
+  let hd = v p
+  let tl = many v p
+  in hd :: tl
+
+let (*>) {E} (p1 : SP E ->[E] _) (p2 : SP E ->[E] _) p =
+  let _ = p1 p in p2 p
+
+let (<*) {E} (p1 : SP E ->[E] _) (p2 : SP E ->[E] _) p =
+  let res = p1 p 
+  let _   = p2 p
+  in res
+
+let (>>) {E} (ps : SP E ->[E] _) v (p : SP E) = let _ = ps p in v
+
+let rec flips {E} (ps : List (SP E ->[E] _)) (p : SP E) =
+  match ps with
+  | [] => p.fail "Unmatched"
+  | x :: ps => 
+    if p.flip () then
+      x p
+    else
+      flips ps p
+  end
+
+let lexeme v = v <* many (isChar isWhite)
+
+let sepBy {E} sep v (p : SP E) = 
+  if p.flip() then 
+    many (v <* sep) p + [v p]
+  else
+    []
+
+let parseIndent = lexeme (many1 (isChar isLetter))
+
+let parseCD p =
+  let cs = parseIndent p
+  let ds = parseIndent p
+  in cs + ds
+
+pub let manyC = runParser (parseCD)
+
+pub let printParse {type X, method toString : X ->> String} (v : Either String X) = 
+  match v with
+  | Left str => printStrLn str 
+  | Right x  => printStrLn x.toString
+  end
+
+rec
+  pub data SValue =
+    | SStr   of String
+    | SInt   of Int
+    | SColor of Color
+  
+  pub data ArgDict    = { args : List (Pair String SValue) }
+  pub data CoreStyle  = { name : String, args : ArgDict, interp : List CoreInterp}
+  pub data CoreInterp = { num : Int, style : CoreStyle }
+
+  pub method toString (s : SValue) =
+    match s with
+    | SStr str => "'" + str + "'"
+    | SInt i   => i.toString
+    | SColor c => c.toString
+    end
+
+  pub method toString (s : ArgDict) = 
+    "{" + List.foldRight (fn ((x, y) : Pair String SValue) acc => x + ":" + y.toString + ", " + acc) s.args "}"
+
+  pub method toString (s : CoreStyle) =
+    "(" + s.name + " " + s.args.toString + " " + s.interp.toString + ")"
+  
+  pub method toString (s : CoreInterp) =
+    "(" + s.num.toString + " " + s.style.toString + ")"
+end
+
+let readNumber xs = 
+  let rec iter xs (acc : Int) = 
+    match xs with
+    | [] => acc
+    | x :: xs => iter xs (acc * 10 + (x : Char).code - '0'.code)
+    end
+  in iter xs 0
+
+pub let parseNumber p = let res = lexeme (many1 (isChar isDigit)) p in readNumber res
+
+let parseString = lexeme (char ''' *> many (isChar (fn c => ''' != c)) <* char ''')
+
+let parseKeyword {E} kw (p : SP E) =
+  let res = parseIndent p in
+  if charListToStr res == kw then
+    ()
+  else
+    p.fail ("Expected " + kw)
+
+let ($) f x = f x
+
+pub let parseArgValue {E} (p : SP E) =
+  if p.flip () then
+    SInt $ parseNumber p
+  else if p.flip () then
+    SStr $ (charListToStr $ parseString p)
+  else if p.flip () then
+    SColor $ flips 
+      [ parseKeyword "red"     >> Red 
+      , parseKeyword "green"   >> Green
+      , parseKeyword "yellow"  >> Yellow
+      , parseKeyword "blue"    >> Blue
+      , parseKeyword "cyan"    >> Cyan
+      , parseKeyword "magenta" >> Magenta
+      , parseKeyword "white"   >> White
+      , parseKeyword "black"   >> Black
+      ]
+      p
+  else
+    SStr $ (charListToStr $ parseIndent p)
+
+pub let parseStyleDict {E} (p : SP E) =
+  let parseKv {E} (p : SP E) =
+    let key = parseIndent p
+    let _ = lexeme (char ':') p
+    let value = parseArgValue p
+    in (charListToStr key, value) 
+  let _ = lexeme (char '{') p
+  let res = sepBy (lexeme (char ',')) parseKv p
+  let _ = lexeme (char '}') p
+  in ArgDict { args = res }
+
+rec 
+  pub let parseSRDocNode {E} (p : SP E) =
+    if p.flip () then
+      (let _ = lexeme (char '*') p
+       let doc = parseSRDocNode p
+       in CoreStyle { name = "reset", args = ArgDict { args = [] }, interp = [CoreInterp { num = 0, style = doc }] })
+    else if p.flip () then
+      (let _ = lexeme (char '&') p
+       let doc = parseSRDocNode p
+       in CoreStyle { name = "shift", args = ArgDict { args = [] }, interp = [CoreInterp { num = 0, style = doc }] })
+    else
+      parseDocNode p
+
+  pub let parseDocNode {E} (p : SP E) = 
+    let _ = lexeme (char '(') p
+    let name = charListToStr $ parseIndent p
+    let immediate =
+      if p.flip () 
+        then 
+          (let _ = lexeme (char ':') p 
+           in Some $ parseArgValue p)
+        else None
+    let args = 
+      if p.flip ()  
+        then parseStyleDict p
+        else ArgDict { args=[] }
+    let interp = parseInterp p
+    let args = match immediate with
+      | Some v => ArgDict { args = ("im", v) :: args.args }
+      | None   => args
+      end
+    let _ = lexeme (char ')') p
+    in CoreStyle { name, args, interp }
+
+  pub let parseInterp {E} (p : SP E) =
+    let iStr {E} (p : SP E) = 
+      let str = SStr (charListToStr $ parseString p)
+      in CoreInterp 
+        { num = 0
+        , style = CoreStyle 
+          { name = "string"
+          , args = ArgDict {args = [("str", str)]}
+          , interp = [] } }
+    let iDoc {E} (p : SP E) = 
+      let style = parseSRDocNode p
+      in CoreInterp {num=0, style}
+    let iEDoc {E} (p : SP E) = 
+      let num = parseNumber p
+      let style = parseSRDocNode p
+      in CoreInterp { num, style }
+    in many (lexeme (flips [iStr, iEDoc, iDoc])) p
+end
