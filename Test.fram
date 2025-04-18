@@ -6,63 +6,24 @@ import open Titanic/Engine
 import open Titanic/Parser
 import open Titanic/Formatter
 
-#let exFmt = ppLayout 20 (ppReset (ppBox (ppFlex 1 <+> ppStr "def" <+> ppFlex 3 <+> ppStr "xyz")))
-#
-#let _ = Engine.showDoc (Engine.debugDoc exFmt)
-#
-#let _ = Engine.showDoc exFmt
-#
-#let exFmt2 = ppReset ((ppStr "asdasdasd" <+> ppShift (ppStr "=========")) /+/ (ppStr "asda" <+> ppShift (ppStr "==================")))
-#
-#let _ = Engine.showDoc (Engine.debugDoc exFmt2)
-#
-#let _ = Engine.showDoc exFmt2
 let _ = printStrLn "start"
-{#
-let style = "
-  (layout:40
-    (color:yellow
-      *(box
-        (color:white 
-          (inter:ver
-            (color:cyan (line))
-              (inter (flex:1) '    Decimal' &(sep) 'Hexadecimal' (flex:1))
-              (color:red (line))
-              1(list:ver
-                (inter
-                  (sep)
-                  (flex:1)
-                  1(int)
-                  &' = '
-                  1(int:x)
-                  (flex:1)
-                  (sep)
-                )
-              )
-              (color:green (line))
-            )
-          )
-        )
-      )
-    )
-  )
-"
-#}
 
 let style = "
+(box
   (layout:80
     *(inter:ver
       (inter:hor (flex) 'Dec' &(sep) (string:'Hex') (flex))
       1(list:ver
         (inter:hor
           (flex)
-          1(int)
+          1(color:yellow (int))
           &(sep)
           1 (int:x)
         )
       )
     )
   )
+)
 "
 
 let d = [1, 2]
@@ -73,6 +34,7 @@ let _ = match sty with
   | Left e => printStrLn ("Parse error " + e)
   | Right sty =>
     let _ = printStrLn sty.toString in
+
     match runStyled d sty with
     | Left msg => printStrLn ("Style error " + msg)
     | Right doc => 

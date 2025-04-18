@@ -53,49 +53,49 @@ let rec lookup {E} (key : String) xs (f : Fail E) =
       lookup key xs f
   end
 
-let getSStr key (args : ArgDict) (f : Fail _) = 
+let getSStr {E} key (args : ArgDict) (f : Fail E) = 
   match lookup key args.args f with
   | SStr str => str
   | _ => f.fail "Type mismatch"
   end
 
-let getSStrI key args (dfl : String) (f : Fail _) = 
+let getSStrI {E} key args (dfl : String) (f : Fail E) = 
   if f.bt() then
     bts [ getSStr "im" args, getSStr key args] f
   else
     dfl
 
-let getSCol key (args : ArgDict) (f : Fail _) = 
+let getSCol {E} key (args : ArgDict) (f : Fail E) = 
   match lookup key args.args f with
   | SColor col => col
   | _ => f.fail "Type mismatch"
   end
 
-let getSColI key args (dfl : Color) (f : Fail _) = 
+let getSColI {E} key args (dfl : Color) (f : Fail E) = 
   if f.bt() then
     bts [ getSCol "im" args, getSCol key args] f
   else
     dfl
 
-let getSNum key (args : ArgDict) (f : Fail _) = 
+let getSNum {E} key (args : ArgDict) (f : Fail E) = 
   match lookup key args.args f with
   | SInt i => i
   | _ => f.fail "Type mismatch"
   end
 
-let getSNumI key args (dfl : Int) (f : Fail _) = 
+let getSNumI {E} key args (dfl : Int) (f : Fail E) = 
   if f.bt() then
     bts [ getSNum "im" args, getSNum key args] f
   else
     dfl
 
-let assertSingle (xs : List CoreInterp) (f : Fail _) =
+let assertSingle {E} (xs : List CoreInterp) (f : Fail E) =
   match xs with
   | [x] => x.style
   | _ => f.fail "Arrity mismatch"
   end
 
-let checkName (name : String) (style : CoreStyle) (f : Fail _) =
+let checkName {E} (name : String) (style : CoreStyle) (f : Fail E) =
   if name == style.name 
     then ()
     else f.fail ("Unexpected name: " + style.name + ". Expected " + name + ".")

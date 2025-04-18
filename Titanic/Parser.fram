@@ -235,7 +235,6 @@ rec
 end
 
 pub let runParser stream = 
-  let ~stream = stream in
   handle ~p =
     let rev = effect stream / r => fn _ => r () stream
     let eof = effect _ / r => 
@@ -259,6 +258,6 @@ pub let runParser stream =
       end
     in SP { peek, seek, eof, rev, fail, flip } 
     return x => fn _ => Right x
-    finally c => c (Stream { stream = ~stream, position = 0 })
+    finally c => c (Stream { stream, position = 0 })
   in
   fullParser ()
