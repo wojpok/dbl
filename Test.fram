@@ -1,8 +1,8 @@
 
 import open Titanic/Test
-import open Titanic/Combinators
+#import open Titanic/Combinators
 import open Titanic/Engine
-import open Titanic/Types
+#import open Titanic/Types
 import open Titanic/Parser
 import open Titanic/Formatter
 
@@ -67,7 +67,7 @@ let style = "
 
 let d = [1, 2]
 
-let sty = runParser fullParser style.toList
+let sty = runParser style.toList
 
 let _ = match sty with
   | Left e => printStrLn ("Parse error " + e)
