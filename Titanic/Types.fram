@@ -18,7 +18,7 @@ rec
     | DColor  of Color, Doc
     | DBox    of Doc
     | DFlex   of Int
-    | DExtra  of {type X}, X, (Int -> Int -> X ->> CtxBox)
+    | DExtra  of {type X}, String, X, (Int -> X ->> CtxBox)
 
   pub data CtxBox = { lines : List Line
                     , fill  : Line 
@@ -26,6 +26,8 @@ rec
                     }
 
   pub let ctxBox lines fill size = CtxBox { lines, fill, size }
+
+  pub let qCtx lines len = ctxBox lines (eLine len) len
 
   pub data Color =
     | Black
@@ -45,6 +47,8 @@ rec
     | LEmpty
     | LColor of Color
     | LColorPop
+
+  pub let eLine n = LFill n " "
 
   pub method toString (c : Color) = 
     match c with
@@ -103,4 +107,3 @@ rec
   pub method toString (s : CoreInterp) =
     "(" + s.num.toString + " " + s.style.toString + ")"
 end
-

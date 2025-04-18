@@ -39,3 +39,12 @@ pub let (<+>) d1 d2 = ppSeq [d1, d2]
 
 pub let (/+/) d1 d2 = ppStack [d1, d2]
 
+pub let ppLine = 
+  doc
+    (DExtra "Line" () (fn size _ => qCtx [LFill size "─"] size))
+    (fixedWidth 0 >. addFlex 1)
+
+pub let ppSep = 
+  doc
+    (DExtra "Sep" () (fn _ _ => ctxBox [LStr " │ "] (LStr " │ ") 3))
+    (fixedWidth 3)

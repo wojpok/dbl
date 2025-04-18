@@ -73,10 +73,6 @@ pub let exampleComputation () =
   let fl = getFlex ()
   in (snd fl) * res
 
-let eLine n = LFill n " "
-
-let qCtx lines len = ctxBox lines (eLine len) len
-
 let nextShift () = 
   match getShifts () with
   | x :: _ => x
@@ -164,7 +160,7 @@ let rec toLines (size : Int) (offset : Int) (d : Doc) =
     let missingShift = shift - offset
     let ctx = toLines (size - missingShift) (offset + missingShift) d
     let lines = linesFill (eLine missingShift) [] ctx.fill ctx.lines
-    in qCtx lines (missingShift + ctx.size)
+    in ctxBox lines ctx.fill (missingShift + ctx.size)
   | DLayout size doc => toLines size offset doc
   | DFlex n => 
     let s = assignSpread n in
@@ -176,7 +172,9 @@ let rec toLines (size : Int) (offset : Int) (d : Doc) =
     let topLine    = LStr "╭" >. concat (LFill w "─") >. concat (LStr "╮")
     let bottomLine = LStr "╰" >. concat (LFill w "─") >. concat (LStr "╯")
     in qCtx ([topLine] + mapped + [bottomLine]) (w + 2)
-  | _ => toLines 0 0 (doc DEmpty (fixedWidth 0))
+  | DExtra _ arg cont =>
+    let size' = assignSpread (d.width.singleStep.flex) + d.width.singleStep.fixed
+    in cont size' arg
   end
 
 pub let showDoc (doc : Doc) =
@@ -211,7 +209,7 @@ pub let debugDoc (d : Doc) =
       | DStack ds  => ppStack (f (ppStr "Stack") :: List.map (fn x => ident (showDoc x)) ds)
       | DFlex n    => f (ppStr ("Flex " + n.toString))
       | DLayout n d => f (ppStr ("Lay " + n.toString)) /+/ ident (showDoc d)
-      | DExtra _ _ => f (ppStr "Extra")
+      | DExtra name _ _ => f (ppStr name)
       end
     let showDoc (d : Doc) =
       showTree (fn x => x <+> showWidth d.width) d.tree

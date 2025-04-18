@@ -171,8 +171,12 @@ let parseStyleDict {E} (p : SP E) =
   let _ = lexeme (char '}') p
   in ArgDict { args = res }
 
-rec 
-  pub let parseSRDocNode {E} (p : SP E) =
+rec
+  pub let fullParser {E} (p : SP E) =
+    let _ = many (isChar isWhite) p
+    in parseSRDocNode p
+
+  let parseSRDocNode {E} (p : SP E) =
     if p.flip () then
       (let _ = lexeme (char '*') p
        let doc = parseSRDocNode p
