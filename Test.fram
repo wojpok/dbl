@@ -1,0 +1,43 @@
+
+import open Titanic/Test
+#import open Titanic/Combinators
+import open Titanic/Engine
+#import open Titanic/Types
+import open Titanic/Parser
+import open Titanic/Formatter
+
+let _ = printStrLn "start"
+
+let style = "
+(box
+  (layout:80
+    *(inter:ver
+      (inter:hor (flex) 'Dec' &(sep) (string:'Hex') (flex))
+      1(list:ver
+        (inter:hor
+          (flex)
+          1(color:yellow (int))
+          &(sep)
+          1 (int:x)
+        )
+      )
+    )
+  )
+)
+"
+
+let d = [1, 2]
+
+let sty = runParser style.toList
+
+let _ = match sty with
+  | Left e => printStrLn ("Parse error " + e)
+  | Right sty =>
+    let _ = printStrLn sty.toString in
+
+    match runStyled d sty with
+    | Left msg => printStrLn ("Style error " + msg)
+    | Right doc => 
+      (showDoc (debugDoc doc); showDoc doc)
+    end
+  end
