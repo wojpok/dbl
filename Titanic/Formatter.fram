@@ -21,6 +21,19 @@ let runFail {E, type X} (calc : {E} -> Fail E ->[E, _] X) =
     return x => Right x
   in calc fail
 
+{#
+handle (fail : Fail [Fail_E]) / Fail_E = 
+  Fail 
+    { fail = effect msg => Left msg
+    , bt   = effect _ / r => 
+      match r True with
+      | Left _ => r False
+      | Right x => Right x
+      end 
+    }
+  return x => Right x
+#}
+
 let rec bts {E} calc (f : Fail E) =
   match calc with
   | [] => f.fail ""

@@ -5,28 +5,13 @@ import open Width
 import open Lines
 import open Combinators
 
-data State E X = State of
+data State E X =
   { get    : Unit ->[E] X
   , put    : X ->[E] Unit
   , update : {F} -> (X ->[E,F] X) ->[E,F] Unit
   }
 
-parameter E_st
-parameter ~st : State E_st _
-
-let get x =
-  let (State { get }) = ~st in
-  get x
-
-let put x =
-  let (State { put }) = ~st in
-  put x
-
-let update f =
-  let (State { update }) = ~st in
-  update f
-
-handle ~st =
+handle (state : State [E_ST] (Pair (Pair (Pair Int Int) (List Step)) (List Int))) / E_ST =
   let get = effect x / r => fn s => r s  s
   let put = effect s / r => fn _ => r () s
   let update f = put (f (get ())) in
@@ -34,34 +19,42 @@ handle ~st =
   return  x => fn _ => x
   finally c => c ((0, 0), ([] : List Step), ([] : List Int))
 
+let get x = state.get x
+
+let put x =
+  state.put x
+
+let update f =
+  state.update f
+
 let getFlex () = 
-  let (fl, _, _) = get ()
+  let (fl, _, _) = state.get ()
   in fl
 
 let putFlex fl =
-  let (_, sts, shs) = get ()
-  in put (fl, sts, shs)
+  let (_, sts, shs) = state.get ()
+  in state.put (fl, sts, shs)
 
 let getSteps () = 
-  let (_, sts, _) = get ()
+  let (_, sts, _) = state.get ()
   in sts
 
 let putSteps sts =
-  let (fl, _, shs) = get ()
-  in put (fl, sts, shs)
+  let (fl, _, shs) = state.get ()
+  in state.put (fl, sts, shs)
 
 let getShifts () = 
-  let (_, _, shs) = get ()
+  let (_, _, shs) = state.get ()
   in shs
 
 let putShifts shs =
-  let (fl, sts, _) = get ()
-  in put (fl, sts, shs)
+  let (fl, sts, _) = state.get ()
+  in state.put (fl, sts, shs)
 
 let bt f () = 
-  let st = get ()
+  let st = state.get ()
   let res = f ()
-  let _ = put st
+  let _ = state.put st
   in res
 
 pub let exampleComputation () = 
