@@ -103,7 +103,13 @@ pub let rec allocateShift (mode : AllocMode) (max : Int) (width : Width) =
            in (x + alloc) :: (allocate (leftover - alloc) xs))
         | _ => []
         end
-       in allocate leftover (List.map2 (fn x y => (x + (avgSpend * y), y)) fixes flexs))
+       let rec prefixSum (xs : List Int) = 
+        match xs with
+        | x :: y :: xs => x :: prefixSum ((x + y) :: xs)
+        | [x] => [x]
+        | []  => []
+        end
+       in prefixSum (allocate leftover (List.map2 (fn x y => (x + (avgSpend * y), y)) fixes flexs)))
   end
 
 pub let populateSpread (size : Int) (step : Step) =

@@ -10,7 +10,8 @@ let style = "
 (box 
   (layout:80 
     *(inter:ver 
-      (inter:hor (flex) 'Dec' &(sep) (string:'Hex') (flex) &(string)) 
+      (inter:hor (flex:5) 'Dec' &(sep) (string:'Hex') (flex:5) &(string))
+      (line)
       1(list:ver 
         (inter:hor (flex) 1(color:yellow (int)) &(sep) 1(int:x) &(string:''))
       )
@@ -19,7 +20,7 @@ let style = "
 )
 "
 
-let d = []
+let d = [1, 2, 3, 4, 5, 6]
 
 let sty = runParser style.toList
 
