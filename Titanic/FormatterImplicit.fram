@@ -200,7 +200,7 @@ module Bool
 end
 
 pub module List 
-  pub let formatted {type X} (fmtT : X -> CoreStyle ->> Either String Doc) (self : List X) (style : CoreStyle) =
+  pub let formatted {type X} (fmtT : X -> CoreStyle ->[] Either String Doc) (self : List X) (style : CoreStyle) =
     handle (~f : Fail [E_F]) / E_F = 
       Fail 
         { fail = effect msg => Left msg

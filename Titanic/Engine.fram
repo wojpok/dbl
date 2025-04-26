@@ -144,12 +144,16 @@ let rec toLines (size : Int) (offset : Int) (d : Doc) =
       let _ = putSteps d.width.steps
       let _ = putShifts shifts
       let _ = updateSpread offset d.width.singleStep
+      let (s1, s2) = getFlex ()
+      let _ = printStrLn (s1.toString + " " + s2.toString)
       in toLines (List.foldLeft (+) 0 shifts) 0 d
     in bt recComp ()
   | DShift d =>
     let shift = popShift ()
     let nextShift = bt popShift () # TODO improve this ugly call
     let _ = popSpread (nextShift - shift - 1) size
+    let (s1, s2) = getFlex ()
+    let _ = printStrLn (s1.toString + " " + s2.toString)
     let missingShift = shift - offset
     let ctx = toLines (size - missingShift) (offset + missingShift) d
     let lines = linesFill (eLine missingShift) [] ctx.fill ctx.lines
