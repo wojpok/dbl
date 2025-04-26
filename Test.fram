@@ -7,20 +7,20 @@ import open Titanic/FormatterImplicit
 let _ = printStrLn "start"
 
 let style = "
-(box 
-  (layout:80 
+(layout:40
+  (box 
     *(inter:ver 
-      (inter:hor (flex:5) 'Dec' &(sep) (string:'Hex') (flex:5) &(string))
+      (inter:hor (flex:5) 'Dec' &(sep) (string:'Hex') (flex:5))
       (line)
       1(list:ver 
-        (inter:hor (flex) 1(color:yellow (int)) &(sep) 1(int:x) &(string:''))
+        (inter:hor (flex) 1(color:yellow (int)) &' = ' 1(color:red (int:x)))
       )
     )
   )
 )
 "
 
-let d = [1, 2, 3, 4, 5, 6]
+let d = [1, 2565, 332423, 4433, 522, 612]
 
 let sty = runParser style.toList
 
@@ -29,7 +29,7 @@ let _ = match sty with
   | Right sty =>
     let _ = printStrLn sty.toString in
 
-    match (List.formatted Int.formatted) d sty with
+    match (FList.formatted FInt.formatted) d sty with
     | Left msg => printStrLn ("Style error " + msg)
     | Right doc => 
       (showDoc (debugDoc doc); showDoc doc)

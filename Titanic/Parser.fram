@@ -26,35 +26,6 @@ parameter E_SP
 parameter ~p : SP E_SP
 parameter ~stream : List Char
 
-let ~stream = []
-
-{#
-handle (parser : SP [SP_E]) / SP_E =
-  let rev = effect stream / r => fn _ => r () stream
-  let eof = effect _ / r => 
-    fn (s : Stream) => 
-      match s.stream with
-      | [] => r True  s
-      | _  => r False s
-      end
-  let peek = effect _ / r => 
-    fn (s : Stream) =>
-      match s.stream with
-      | x :: _ => r (Some x) s
-      | _      => r  None    s
-      end
-  let seek = effect _ / r => fn s => r () s.seek
-  let fail = effect msg => fn _ => Left msg
-  let flip = effect _ / r => fn s => 
-    match r True s with
-    | Left _ => r False s
-    | Right x => Right x
-    end
-  in SP { peek, seek, eof, rev, fail, flip } 
-  return x => fn _ => Right x
-  finally c => c (Stream { stream = [], position = 0 })
-#}
-
 let char (c : Char) () =
   match ~p.peek () with
   | Some c' => 
@@ -180,19 +151,19 @@ let parseStyleDict () =
 rec
   pub let fullParser () =
     let _ = many (isChar isWhite) ()
-    in parseSRDocNode ()
+    in parseSRLift parseDocNode ()
 
-  let parseSRDocNode () =
+  let parseSRLift cont () =
     if ~p.flip () then
       (let _ = lexeme (char '*') ()
-       let doc = parseSRDocNode ()
+       let doc = parseSRLift cont ()
        in CoreStyle { name = "reset", args = ArgDict { args = [] }, interp = [CoreInterp { num = 0, style = doc }] })
     else if ~p.flip () then
       (let _ = lexeme (char '&') ()
-       let doc = parseSRDocNode ()
+       let doc = parseSRLift cont ()
        in CoreStyle { name = "shift", args = ArgDict { args = [] }, interp = [CoreInterp { num = 0, style = doc }] })
     else
-      parseDocNode ()
+      cont ()
 
   let parseDocNode () = 
     let _ = lexeme (char '(') ()
@@ -217,19 +188,21 @@ rec
 
   let parseInterp () =
     let iStr () = 
-      let str = SStr (charListToStr $ parseString ())
-      in CoreInterp 
-        { num = 0
-        , style = CoreStyle 
+      let tail () =
+        let str = SStr (charListToStr $ parseString ())
+        in CoreStyle 
           { name = "string"
           , args = ArgDict {args = [("str", str)]}
-          , interp = [] } }
+          , interp = [] } 
+      in CoreInterp 
+        { num = 0
+        , style = parseSRLift tail ()}
     let iDoc () = 
-      let style = parseSRDocNode ()
+      let style = parseSRLift parseDocNode ()
       in CoreInterp {num=0, style}
     let iEDoc () = 
       let num = parseNumber ()
-      let style = parseSRDocNode ()
+      let style = parseSRLift parseDocNode ()
       in CoreInterp { num, style }
     in many (lexeme (flips [iStr, iEDoc, iDoc])) ()
 end

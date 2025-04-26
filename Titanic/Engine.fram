@@ -160,8 +160,6 @@ let rec toLines (size : Int) (offset : Int) (d : Doc) =
       let _ = putSteps doc.width.steps
       let _ = putShifts shifts
       let _ = updateSpread offset doc.width.singleStep
-      let (s1, s2) = getFlex ()
-      let _ = printStrLn (s1.toString + " " + s2.toString)
       in toLines (List.foldLeft (+) 0 shifts) 0 doc
     in bt recComp ()
   

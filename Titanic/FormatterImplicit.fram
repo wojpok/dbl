@@ -1,4 +1,5 @@
 import /List
+import /Prelude
 
 import open Types
 import open Combinators
@@ -127,7 +128,7 @@ let rec fmtLift {type X, E}
   else
     cont style val
 
-pub module Int
+pub module FInt
   pub let formatted (self : Int) (style : CoreStyle) =
     handle (~f : Fail [_])= 
       Fail 
@@ -143,17 +144,21 @@ pub module Int
     in
     let formatSelf (style : CoreStyle) (self : Int) = 
       let _ = checkName "int" style ()
-      let fmt = getSStrI "fmt" style.args "n" () in
-      if fmt == "n" then
+      let fmt = getSStrI "fmt" style.args "d" () in
+      if fmt == "d" then
         ppStr self.toString
       else if fmt == "x" then
-        ppStr "hex not implemented yet"
+        ppStr self.toBase16
+      else if fmt == "o" then
+        ppStr self.toBase8
+      else if fmt == "b" then
+        ppStr self.toBase2
       else
         ~f.fail ("Unknown format " + fmt)
     in fmtLift formatSelf style self
 end
 
-module Unit
+module FUnit
   pub let formatted (self : Unit) style =
     handle (~f : Fail [_])= 
       Fail 
@@ -173,7 +178,7 @@ module Unit
     in fmtLift formatSelf style ()
 end
 
-module Bool
+module FBool
   pub let formatted (self : Bool) style =
     handle (~f : Fail [_])= 
       Fail 
@@ -199,7 +204,52 @@ module Bool
     in fmtLift formatSelf style self
 end
 
-pub module List 
+pub module FPair
+  pub let formatted {type X, type Y}
+                  (fmtT1 : X -> CoreStyle ->[] Either String Doc)
+                  (fmtT2 : Y -> CoreStyle ->[] Either String Doc)
+                  (self : Pair X Y) 
+                  (style : CoreStyle) =
+    handle (~f : Fail [E_F]) / E_F = 
+      Fail 
+        { fail = effect msg => Left msg
+        , bt   = effect _ / r => 
+          match r True with
+          | Left _ => r False
+          | Right x => Right x
+          end 
+        }
+      return x => Right x
+      finally c => c
+    in
+    let formatSelf (style : CoreStyle) (self : Pair X Y) =
+      let _ = checkName "pair" style ()
+      let orient = getSStrI "orient" style.args "hor" () in
+      let lift v = match v with
+      | Right x => x
+      | Left msg => ~f.fail msg
+      end
+      let mapF (p : Pair X Y) (elem: CoreInterp) =
+        if elem.num == 0 then
+          lift (FUnit.formatted () elem.style)
+        else if elem.num == 1 then
+          lift (fmtT1 (fst p) elem.style)
+        else if elem.num == 2 then
+          lift (fmtT2 (snd p) elem.style)
+        else
+          ~f.fail "Interpolation error"
+      in
+      let elems = List.map (mapF self) style.interp
+      in if orient == "ver" then
+        ppStack elems
+      else if orient == "hor" then
+        ppSeq elems
+      else
+        ~f.fail "Unknown orientation"
+  in fmtLift formatSelf style self
+end
+
+pub module FList 
   pub let formatted {type X} (fmtT : X -> CoreStyle ->[] Either String Doc) (self : List X) (style : CoreStyle) =
     handle (~f : Fail [E_F]) / E_F = 
       Fail 
