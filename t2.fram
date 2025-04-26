@@ -1,9 +1,0 @@
-parameter ~f 
-
-let f1 x = ~f x
-
-let f2 x = f1 x
-
-let res = 
-  let ~f = fn x => x in
-  f2 ()
