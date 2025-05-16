@@ -30,6 +30,7 @@ pub let snd (_, y) = y
 pub let not b = if b then False else True
 
 pub let charListToStr = (extern dbl_chrListToStr : List Char -> String)
+pub let strListCat = (extern dbl_strListCat : List String -> String)
 
 pub let chr {~onError : Unit ->[_] Char} (n : Int) =
   if n >= 0 && n < 256 then

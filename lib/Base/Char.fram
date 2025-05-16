@@ -13,6 +13,8 @@ pub method lt    = (extern dbl_ltInt  : Char -> Char -> Bool)
 pub method ge    = (extern dbl_geInt  : Char -> Char -> Bool)
 pub method le    = (extern dbl_leInt  : Char -> Char -> Bool)
 
+pub method unescaped = (extern dbl_unescapedChrToString : Char -> String)
+
 pub method toString = (extern dbl_chrToString : Char -> String)
 
 pub method format (self : Char) (fmt : Option Unit) = self.toString
