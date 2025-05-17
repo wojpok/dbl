@@ -76,6 +76,7 @@ let int64_cmpop op = int64_fun2 (fun x y -> of_bool (op x y))
 
 let str_cmpop op = str_fun (fun s1 -> str_fun (fun s2 -> of_bool (op s1 s2)))
 
+
 let extern_map =
   [ "dbl_runtimeError", str_fun runtime_error;
     "dbl_magic",       pure_fun Fun.id;
@@ -148,4 +149,22 @@ let extern_map =
     "dbl_arraySet",   array_fun (fun a -> int_fun (fun n -> pure_fun (fun v ->
                         a.(n) <- v; v_unit)));
     "dbl_arrayLength", array_fun (fun a -> VNum (Array.length a));
+    "dbl_setRawMode", unit_fun (fun _ -> 
+                                let open Unix in
+                                let termios : terminal_io = tcgetattr stdin in
+                                let new_termios = { termios with 
+                                  c_icanon = false; c_echo = false } in
+                                tcsetattr stdin TCSANOW new_termios; v_unit);
+    "dbl_setCanMode", unit_fun (fun _ -> 
+                                let open Unix in
+                                let termios : terminal_io = tcgetattr stdin in
+                                let new_termios = { termios with 
+                                  c_icanon = true; c_echo = true } in
+                                tcsetattr stdin TCSANOW new_termios; v_unit);
+    "dbl_unixRead", unit_fun (fun _ ->
+                              let buf = Bytes.create 32 in
+                              let n = Unix.read Unix.stdin buf 0 32 in
+                              let ch = Bytes.sub_string buf 0 n in
+                              VStr ch);
+    "dbl_flush", unit_fun (fun _ -> let _ = flush stdout in v_unit);
   ] |> List.to_seq |> Hashtbl.of_seq
