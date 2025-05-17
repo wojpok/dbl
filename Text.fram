@@ -1,0 +1,105 @@
+import /List
+
+data UChar =
+  | A of Char
+  | U of List Char
+
+method toList (self : UChar) =
+  match self with
+  | A c  => [c]
+  | U cs => cs
+  end
+
+method equal (self : UChar) (other : UChar) =
+  match (self, other) with
+  | (A c1, A c2) => c1 == c2
+  | (U c1, U c2) => c1 == c2
+  | (_, _) => False
+  end
+
+let isWhite (self : UChar) =
+  (self == A ' ') || (self == A '\t') || (self == A '\n')
+
+data Text = 
+  { length : Int
+  , text : List UChar }
+
+method toString (self : Text) = 
+  charListToStr (List.concatMap (fn (c : UChar) => c.toList) self.text)
+
+
+let parseUChar (cs : List Char) =
+  let isAscii num = (0x80 &&& num) == 0x00 in
+  let isContc num = (0xC0 &&& num) == 0x80 in
+  let isChar2 num = (0xE0 &&& num) == 0xC0 in
+  let isChar3 num = (0xF0 &&& num) == 0xE0 in
+  let isChar4 num = (0xF8 &&& num) == 0xF0 in
+  let parseLen num =
+    if isAscii num then 0
+    else if isChar2 num then 1
+    else if isChar3 num then 2
+    else if isChar4 num then 3
+    else (assert {msg="UTF decoding error"} False; 0) in
+  let parseTail n (cs : List Char) =
+    let pref = List.take n cs
+    let suff = List.drop n cs in
+    assert {msg="UTF decoding error"} (n == pref.length);
+    assert {msg="UTF decoding error"} 
+      (List.foldRight (fn a b => a && b) 
+        (List.map (fn (c:Char) => isContc c.code) pref) 
+        True);
+    (pref, suff) in
+  match cs with
+  | [] => (assert {msg="No char to parse"} False; (A ' ', []))
+  | c :: cs => 
+    let len = parseLen c.code in
+    if len == 0 then
+      (A c, cs)
+    else
+     (let (pref, suff) = parseTail len cs in
+      (U (c :: pref), suff))
+  end
+
+method toText (self : String) = 
+  let xs = self.toList in
+  let rec iter xs = 
+    match xs with
+    | [] => []
+    | xs =>
+      let (c, tl) = parseUChar xs in
+      c :: iter tl
+    end
+  let text = iter xs in
+  Text {text, length = text.length}
+
+let parsed = "Zażółć gęślą jaźń".toText 
+
+let _ = printStrLn parsed.length.toString
+
+method words (self : Text) = 
+  let rec iter cs = 
+    let start = List.dropWhile isWhite cs in
+    match start with
+    | [] => []
+    | xs =>
+      let word = List.takeWhile (fn w => not (isWhite w)) xs
+      let next = List.dropWhile (fn w => not (isWhite w)) xs in
+      word :: iter next
+    end in
+  List.map (fn (xs : List UChar) => Text {text=xs, length=xs.length})
+           (iter self.text)
+
+method toString 
+  { type X, method toString : X ->> String }
+  (self : List X) =
+  let rec iter (xs : List X) =
+    match xs with
+    | [] => "]"
+    | [x] => x.toString + "]"
+    | x :: xs => x.toString + ", " + iter xs
+    end in
+  "[" + iter self
+
+
+let _ = printStrLn (parsed.words.toString)
+let _ = printStrLn (parsed.words.map (fn (x:Text) => x.length) >.toString)
