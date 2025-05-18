@@ -1,7 +1,5 @@
 import /List
 
-let cannonMode = (extern dbl_setCanMode : Unit ->[IO] Unit)
-let rawMode    = (extern dbl_setRawMode : Unit ->[IO] Unit)
 let unixRead   = (extern dbl_unixRead : Unit ->[IO] String)
 let flush      = (extern dbl_flush : Unit ->[IO] Unit)
 
@@ -12,6 +10,8 @@ let del = '\x7f'
 let delStr = "\x7f"
 
 let (csi : String) = escStr + "["
+
+let isControl (str : String) = str.get 0 == esc
 
 module Cursor
   pub let moveHome = csi + "H"
@@ -38,21 +38,77 @@ module Cursor
   pub let moveToColumn {?n : Int} () = move n "G"
 
   pub let requestPosition = csi + "6n"
+
+  pub let savePosition    = csi + "s"
+  pub let restorePosition = csi + "u"
 end
 
 module Erase
-  pub let eraseDisplay = csi + "J"
+  pub let eraseDisplay    = csi + "J"
+  pub let eraseEndScreen  = csi + "0J"
+  pub let eraseBegScreen  = csi + "1J"
+  pub let eraseScreen     = csi + "2J"
+  pub let eraseSavedLines = csi + "3J"
 
-  pub let eraseEndScreen = csi + "0J"
-
-  pub let eraseBegScreen = csi + "1J"
-
-  pub let eraseScreen = csi + "2J"
-
-  pub let eraseSavedLines = cis + "3J"
+  pub let eraseInLine  = csi + "K"
+  pub let eraseEndLine = csi + "0K"
+  pub let eraseBegLine = csi + "1K"
+  pub let eraseLine    = csi + "2K"
 end
 
-let isControl (str : String) = str.get 0 == esc
+module Color
+  let setMode reset flag =
+    if not reset then
+      csi + flag + "m"
+    else
+      csi + "2" + flag + "m"
+
+  let resetAll = setMode False "0"
+
+  let setBoldMode   = setMode False "1"
+  let resetBoldMode = setMode True "1"
+
+  # TODO many other
+
+  pub data Color =
+    | Black
+    | Red
+    | Green
+    | Yellow
+    | Blue
+    | Magenta
+    | Cyan
+    | White
+
+  method colorCode cl = 
+    match cl with
+    | Black   => 0
+    | Red     => 1
+    | Green   => 2
+    | Yellow  => 3
+    | Blue    => 4
+    | Magenta => 5
+    | Cyan    => 6
+    | White   => 7
+    end
+  
+  let setFgColor (cl : Color) = setMode False ((cl.colorCode + 30 : Int) >. toString)
+  let setBgColor (cl : Color) = setMode False ((cl.colorCode + 40 : Int) >. toString)
+
+  let setDflFgColor = setMode False (39.toString)
+  let setDflBgColor = setMode False (49.toString)
+end
+
+module Private
+  pub let cursorVisible   = csi + "?25l"
+  pub let cursorInvisible = csi + "?25h"
+
+  pub let restoreScreen = csi + "?47l"
+  pub let saveScreen    = csi + "?47h"
+
+  pub let enableAltBuffer  = csi + "?1049h"
+  pub let disableAltBuffer = csi + "?1049l"
+end
 
 let enable_mouse () =
   printStr "\x1b[?1000h";  
@@ -73,31 +129,59 @@ pub method toString
     end in
   "[" + iter self
 
-let test () =
-  disable_mouse ();
-  rawMode ();
-  # tenable_mouse ();
-  let ch = unixRead () in
-  printStr ch.toList.toString;
-  cannonMode ()
-
 let betterReadLine () =
-  let rec iter (buffer : List Char) = 
+  let zipRight zip = 
+    match zip with
+    | (x :: xs, ys) => (xs, x :: ys)
+    | oth => oth
+    end
+  let zipLeft zip =
+    match zip with
+    | (xs, y :: ys) => (y :: xs, ys)
+    | oth => oth
+    end
+  let zipDel zip =
+    match zip with
+    | (x :: xs, ys) => (xs, ys)
+    | oth => oth
+    end
+  let zipIns el (xs, ys) = (el :: xs, ys)
+  let zipperToString ((xs : List Char), (ys : List Char)) =
+    charListToStr (List.revAppend xs ys)
+  let redrawZipper zipper =
+    let str = zipperToString zipper in
+    printStr (Cursor.savePosition);
+    printStr (Erase.eraseLine);
+    printStr (Cursor.moveToColumn ());
+    printStr str;
+    printStr (Cursor.restorePosition);
+    flush ()
+  
+  let rec iter (zipper : Pair (List Char) (List Char)) = 
     let ch = unixRead () in
-    if ch == delStr then
-      (printStr "\x08\x7f"; flush (); let ~onError _ = [] in iter buffer.tlErr)
-    else if ch == "\n" then
-      charListToStr buffer.rev
-    else if isControl ch then
-      iter buffer
+    if ch == "\n" then
+      zipperToString zipper
     else
-     (printStr ch;
-      flush ();
-      iter (ch.get 0 :: buffer)) in
-  rawMode ();
-  let str = iter [] in
-  cannonMode ();
+      if ch == delStr then
+       (let zipper = zipDel zipper in
+        printStr (Cursor.moveLeft ());
+        redrawZipper zipper;
+        iter zipper)
+      else if ch == Cursor.moveLeft () then
+       (printStr ch;
+        flush ();
+        iter (zipRight zipper))
+      else if ch == Cursor.moveRight () then
+       (printStr ch;
+        flush ();
+        iter (zipLeft zipper))
+      else
+       (let zipper = zipIns (ch.get 0) zipper in
+        printStr (Cursor.moveRight ());
+        redrawZipper zipper;
+        iter zipper) in
+  let str = iter ([], []) in
   printStrLn "";
   printStrLn str
 
-# let _ = betterReadLine ()
+let _ = betterReadLine ()

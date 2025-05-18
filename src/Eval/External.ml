@@ -149,18 +149,6 @@ let extern_map =
     "dbl_arraySet",   array_fun (fun a -> int_fun (fun n -> pure_fun (fun v ->
                         a.(n) <- v; v_unit)));
     "dbl_arrayLength", array_fun (fun a -> VNum (Array.length a));
-    "dbl_setRawMode", unit_fun (fun _ -> 
-                                let open Unix in
-                                let termios : terminal_io = tcgetattr stdin in
-                                let new_termios = { termios with 
-                                  c_icanon = false; c_echo = false } in
-                                tcsetattr stdin TCSANOW new_termios; v_unit);
-    "dbl_setCanMode", unit_fun (fun _ -> 
-                                let open Unix in
-                                let termios : terminal_io = tcgetattr stdin in
-                                let new_termios = { termios with 
-                                  c_icanon = true; c_echo = true } in
-                                tcsetattr stdin TCSANOW new_termios; v_unit);
     "dbl_unixRead", unit_fun (fun _ ->
                               let buf = Bytes.create 32 in
                               let n = Unix.read Unix.stdin buf 0 32 in
