@@ -183,7 +183,10 @@ rule token = parse
         let () = open_cbrackets := !open_cbrackets - 1 in
         YaccParser.CBR_CLS  
     }
-  | "@{" { YaccParser.ATTR_OPEN  }
+  | "@{" { 
+    open_cbrackets := !open_cbrackets + 1;
+    YaccParser.ATTR_OPEN
+  }
   | op_char+ as x { tokenize_oper lexbuf.Lexing.lex_start_p x }
   | lid_start var_char* as x { tokenize_ident x }
   | uid_start var_char* as x { YaccParser.UID x }

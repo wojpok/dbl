@@ -1,0 +1,8 @@
+
+import open /Format
+
+@{test ok}
+let _ =
+  printStrLn "x = \{() | UnitFmt}; y = \{10 | IntFmt {base = 11}}"
+
+
