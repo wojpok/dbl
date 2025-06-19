@@ -134,7 +134,10 @@ pub method format {?prec : Int, ?fmt : IntFmt} (self : Int) =
   # constructs representation
   let rec iter (n : Int) acc = 
     if n == 0 then
-      acc
+      match acc with
+      | [] => ['0']
+      | acc => acc
+      end
     else
      (let digit = n % base
       let shift = n / base

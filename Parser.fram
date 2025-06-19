@@ -1,0 +1,217 @@
+
+import open /Format
+
+pub data Stream = { chrs : List Char, position : Int, consumed : Bool } 
+
+method seek (stream : Stream) =
+  match stream.chrs with
+  | _ :: xs => Stream { chrs=xs, position=stream.position + 1, consumed=True }
+  | _ => stream
+  end
+
+method soft (Stream{chrs, position}) =
+  Stream {chrs, position, consumed=False}
+
+pub method toString (stream : Stream)
+  = "Stream " + stream.position.format + " " + stream.chrs.format
+
+pub data Err X =
+  | ESoft of Int, X
+  | EHard of Int, X
+
+pub method format 
+  { type T, type TFmt
+  , method format : {?fmt : TFmt, ?prec : Int} -> T ->> String
+  , ?fmt : Unit
+  , ?prec : Int } 
+  (self : Err T) =
+    match self with
+    | ESoft p e => "Soft error: \{e}, emitted at \{p}"
+    | EHard p e => "Hard error: \{e}, emitted at \{p}"
+    end
+
+pub data SP (E : effect) T = 
+  { peek  : Unit ->[E] Option Char
+  , seek  : Unit ->[E] Unit
+  , eof   : Unit ->[E] Bool
+  , rev   : Stream ->[E] Unit
+  , fail  : {type X} -> T ->[E] X
+  , emit  : {type X} -> Err T ->[E] X
+  , flip  : Unit ->[E] Bool
+  , catch : Unit ->[E] Option (Err T)
+  , soft  : Unit ->[E] Unit
+  }
+
+pub let runParser (chrs : String) =
+  handler
+    SP { rev = effect stream / r => fn _ => r () stream
+       , eof = effect _ / r => 
+          fn (s : Stream) => 
+            match s.chrs with
+            | [] => r True  s
+            | _  => r False s
+            end
+       , peek = effect _ / r => 
+          fn (s : Stream) =>
+            match s.chrs with
+            | x :: _ => r (Some x) s
+            | _      => r  None    s
+            end
+       , seek = effect _ / r => fn s => r () s.seek
+       , fail = effect msg => fn s => 
+          if s.consumed then
+            Left (EHard s.position msg)
+          else
+            Left (ESoft s.position msg)
+       , emit = effect msg => fn s => Left msg
+       , flip = effect _ / r => fn s => 
+          match r True s with
+          | Left (ESoft _ _) => r False s
+          | x => x
+          end
+       , catch = effect _ / r => fn s =>
+          match r None s with
+          | Left e => r (Some e) s
+          | x => x
+          end
+       , soft = effect _ / r => fn s => r () s.soft
+       }
+    return x => fn _ => Right x
+    finally c => c (Stream {chrs=chrs.toList, position=0, consumed=False})
+  end
+
+abstr data Parser T O = Parser of ({E} -> SP E T ->[E] O)
+
+pub method runP (Parser f) p = f p
+
+pub let empty = Parser (fn _ => ())
+
+pub let delay (f : Unit ->> Parser _ _) = 
+  Parser (fn p => f () >. runP p)
+
+pub method map (Parser c) f = 
+  Parser (fn (p : SP _ _) => f (c p))
+
+pub method val (Parser c) v =
+  Parser (fn (p : SP _ _) => let _ = c p in v)
+
+# pub method bind (Parser c) (f : _ ->> Parser _ _) =
+#   Parser (fn (p : SP _ _) => let val = c p in (f p >.runP p))
+
+pub method msg (Parser c) m = 
+  Parser (fn (p : SP _ _) => 
+    match p.catch () with
+    | None => c p
+    | Some (ESoft _ _) => p.fail m
+    | Some e => p.emit e
+    end)
+
+pub let char (c : Char) =
+  Parser (fn (p : SP _ _) =>
+    match p.peek () with
+    | Some c' =>
+      if c == c' 
+        then (p.seek (); c) 
+        else p.fail "Invalid character. Expected \{c}"
+    | None => p.fail "Unexpected EOF"
+    end)
+
+pub let isChar pred =
+  Parser (fn (p : SP _ _) =>
+    match p.peek () with
+    | Some c' => 
+      if pred c' 
+        then (p.seek (); c') 
+        else p.fail "Invalid character"
+    | None => p.fail "Unexpected EOF"
+    end)
+
+let isWhite (c : Char) = (c == ' ' || c == '\n' || c == '\t')
+let isLetter (c : Char) = ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z')
+let isDigit (c : Char) = ('0' <= c && c <= '9')
+
+let soft {E} (f : SP E _ ->> _) (p : SP E _) =
+  match p.catch () with
+  | None => f p
+  | Some (EHard p' m) => p.emit (ESoft p' m)
+  | Some e => p.emit e
+  end
+
+pub method soft (Parser f) = Parser (soft f)
+
+pub method seq (Parser f) (Parser g) =
+  Parser (fn p => let _ = f p in g p)
+
+pub method before (Parser f) (Parser g) =
+  Parser (fn p => let res = f p in let _ = g p in res)
+
+pub method many (Parser f) =
+  Parser (fn (p : SP _ _) =>
+    let rec iter () =
+      if p.flip () 
+        then soft f p :: iter ()
+        else [] in
+    iter ())
+
+pub method many1 (Parser f) =
+  Parser (fn (p : SP _ _) =>
+    let head = f p in
+    let tail = (Parser f).many.runP p in
+    head :: tail)
+
+pub method sepBy (valP : Parser _ _) (sepP : Parser _ _) =
+  Parser (fn (p : SP _ _) =>
+    if p.flip () then
+     (let xs = valP.before sepP >. many >.runP p in
+      xs + [valP.soft.runP p])
+    else
+      [])
+
+let readNumber xs = 
+  let rec iter xs (acc : Int) = 
+    match xs with
+    | [] => acc
+    | x :: xs => iter xs (acc * 10 + (x : Char).code - '0'.code)
+    end
+  in iter xs 0
+
+pub method lexeme (v : Parser _ _) = v.before (isChar isWhite >.many)
+
+pub let parseNumber = isChar isDigit >.many1 >.map readNumber
+
+pub method or (Parser t1) (Parser t2) =
+  Parser (fn (p : SP _ _) =>
+    if p.flip () then
+      t1 p
+    else
+      t2 p)
+
+pub let or (Parser t1, Parser t2) =
+  Parser (fn (p : SP _ _) => 
+    if p.flip () then
+      t1 p
+    else
+      t2 p)
+
+pub let rec parseChoice (xs : List (Parser _ _)) =
+  (Parser (fn (p : SP _ _) =>
+  let rec iter (p : SP _ _) xs =
+    match xs with
+    | Parser trans :: xs =>
+      if p.flip () then
+        trans p
+      else
+        iter p xs
+    | [] => p.fail "Choice fail"
+  end in
+  iter p xs) : Parser _ _)
+
+
+
+pub let parseKeyword (kw : String) = 
+  Parser (fn (p : SP _ _) =>
+    let wrd = isChar isLetter >.many1 >.runP p in
+    if charListToStr wrd == kw then
+      ()
+    else
+      p.fail "Expected \{kw}")

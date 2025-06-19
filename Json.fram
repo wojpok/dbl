@@ -1,0 +1,66 @@
+import open Parser
+import open Format
+
+let _ = printStrLn "start"
+
+data rec Json =
+  | JNum    of Int
+  | JString of String
+  | JBool   of Bool
+  | JNull
+  | JArray  of List Json
+  | JDict   of List (Pair String Json)
+
+method rec format {?fmt : Unit} (self : Json) =
+  match self with
+  | JNum n => n.format
+  | JString s => s.format
+  | JBool b => b.format {fmt=BoolFmt{true="true", false="false"}}
+  | JNull => "null"
+  | JArray xs => xs.format
+  | JDict _ => "?"
+  end
+
+let jNumber = parseNumber.lexeme.map (fn x => JNum x) >.msg "Expected number"
+let jNull   = parseKeyword "null" >.lexeme >.val JNull
+let jBool   = parseKeyword "true"  >.lexeme >.val (JBool True) >.or 
+                (parseKeyword "false" >.lexeme >.val (JBool False))
+                
+let jString = 
+  char '"'
+  >.seq (isChar (fn (x : Char) => x != '"') 
+    >.many >.map (fn xs => JString (charListToStr xs)))
+  >.before (char '"' >.lexeme)
+
+rec
+  let jValue () = 
+    parseChoice [jNumber.soft, jNull.soft, jBool, jString.soft, delay jArray >.soft]
+    #>.msg "Expected json value"
+
+  let jArray () =
+    char '[' >.lexeme
+    >.seq (delay jValue >.sepBy (char ',' >.lexeme) >.map JArray)
+    >.before (char ']' >.lexeme)
+
+  let jDict () =
+    char '{' >.lexeme
+    >.seq (jString >.seq (char ':' >.lexeme))
+end
+
+let pe (p : SP _ _) = 
+  let _ = char ':' >.runP p
+  let _ = char ' ' >.many >.runP p
+  let _ = parseNumber.runP p in
+  # let () = p.fail "" in
+  JNum 10
+
+# let full p = let res = jArray.runP p in res
+
+let json = "[true, []]"
+
+let res = handle p with runParser json in (empty.lexeme.seq (delay jValue) >.runP p)
+
+# let res = handle p with runParser json in jValue.runP p
+
+let _ = printStrLn res.format
+

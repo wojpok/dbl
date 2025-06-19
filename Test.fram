@@ -1,8 +1,31 @@
-
 import open /Format
 
-@{test ok}
-let _ =
-  printStrLn "x = \{() | UnitFmt}; y = \{10 | IntFmt {base = 11}}"
+rec
+  data TestCase =
+    { name : String
+    , line : Int
+    }
 
+  data TestSuite E =
+    { name : String
+    , file : String
+    , line : Int
+    , case : String -> (Unit ->> Unit) ->[E] Unit
+    , fail : {type X} -> Unit ->[E] X
+    , flip : Unit ->[E] Bool
+    }
+end
+
+
+
+let _ =
+  handle test with suite "Moj test" in
+  
+  let _ = test.case "Test 1" (fn () =>
+    let test.assertTrue True)
+  
+  let _ = test.case "Test 2" (fn () =>
+    let test.assertFalse True) in
+  
+  test.done ()
 
