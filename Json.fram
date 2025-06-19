@@ -21,10 +21,10 @@ method rec format {?fmt : Unit} (self : Json) =
   | JDict _ => "?"
   end
 
-let jNumber = parseNumber.lexeme.map (fn x => JNum x) >.msg "Expected number"
-let jNull   = parseKeyword "null" >.lexeme >.val JNull
-let jBool   = parseKeyword "true"  >.lexeme >.val (JBool True) >.or 
-                (parseKeyword "false" >.lexeme >.val (JBool False))
+let jNumber = parseNumber.lexeme.map (fn x => JNum x)
+let jNull   = parseKeyword "null"  >.lexeme >.val JNull
+let jBool   = parseKeyword "true"  >.lexeme >.val (JBool True)
+        >.or (parseKeyword "false" >.lexeme >.val (JBool False))
                 
 let jString = 
   char '"'
@@ -34,8 +34,8 @@ let jString =
 
 rec
   let jValue () = 
-    parseChoice [jNumber.soft, jNull.soft, jBool, jString.soft, delay jArray >.soft]
-    #>.msg "Expected json value"
+    parseChoice [jNumber, jNull, jBool, jString, delay jArray]
+    >.msg "Expected json value"
 
   let jArray () =
     char '[' >.lexeme
@@ -56,11 +56,17 @@ let pe (p : SP _ _) =
 
 # let full p = let res = jArray.runP p in res
 
-let json = "[true, []]"
+let json = " [true, [10, 20]]"
+
+let tparser = 
+  parseChoice 
+    [ parseKeyword "true"  >.val True  >.msg "true"
+    , parseKeyword "false" >.val False >.msg "false"
+    ] >.msg "true or false"
 
 let res = handle p with runParser json in (empty.lexeme.seq (delay jValue) >.runP p)
 
-# let res = handle p with runParser json in jValue.runP p
+#let res = handle p with runParser "" in tparser.runP p
 
 let _ = printStrLn res.format
 

@@ -1,45 +1,29 @@
-
+import open /List
 import open /Format
 
-pub data Stream = { chrs : List Char, position : Int, consumed : Bool } 
+let print = (extern dbl_printStrLn : String -> Unit)
+
+pub data Stream = { chrs : List Char, position : Int} 
 
 method seek (stream : Stream) =
   match stream.chrs with
-  | _ :: xs => Stream { chrs=xs, position=stream.position + 1, consumed=True }
+  | _ :: xs => Stream { chrs=xs, position=stream.position + 1}
   | _ => stream
   end
 
-method soft (Stream{chrs, position}) =
-  Stream {chrs, position, consumed=False}
-
 pub method toString (stream : Stream)
   = "Stream " + stream.position.format + " " + stream.chrs.format
-
-pub data Err X =
-  | ESoft of Int, X
-  | EHard of Int, X
-
-pub method format 
-  { type T, type TFmt
-  , method format : {?fmt : TFmt, ?prec : Int} -> T ->> String
-  , ?fmt : Unit
-  , ?prec : Int } 
-  (self : Err T) =
-    match self with
-    | ESoft p e => "Soft error: \{e}, emitted at \{p}"
-    | EHard p e => "Hard error: \{e}, emitted at \{p}"
-    end
 
 pub data SP (E : effect) T = 
   { peek  : Unit ->[E] Option Char
   , seek  : Unit ->[E] Unit
   , eof   : Unit ->[E] Bool
+  , pos   : Unit ->[E] Int
   , rev   : Stream ->[E] Unit
   , fail  : {type X} -> T ->[E] X
-  , emit  : {type X} -> Err T ->[E] X
+  , emit  : {type X} -> (Pair Int T) ->[E] X
   , flip  : Unit ->[E] Bool
-  , catch : Unit ->[E] Option (Err T)
-  , soft  : Unit ->[E] Unit
+  , catch : Unit ->[E] Option (Pair Int T)
   }
 
 pub let runParser (chrs : String) =
@@ -58,15 +42,17 @@ pub let runParser (chrs : String) =
             | _      => r  None    s
             end
        , seek = effect _ / r => fn s => r () s.seek
+       , pos  = effect _ / r => fn s => r s.position s
        , fail = effect msg => fn s => 
-          if s.consumed then
-            Left (EHard s.position msg)
-          else
-            Left (ESoft s.position msg)
+          Left (s.position, msg)
        , emit = effect msg => fn s => Left msg
        , flip = effect _ / r => fn s => 
           match r True s with
-          | Left (ESoft _ _) => r False s
+          | Left (pos, msg) =>
+            if s.position == pos then
+              r False s
+            else
+              Left (pos, msg)
           | x => x
           end
        , catch = effect _ / r => fn s =>
@@ -74,10 +60,9 @@ pub let runParser (chrs : String) =
           | Left e => r (Some e) s
           | x => x
           end
-       , soft = effect _ / r => fn s => r () s.soft
        }
-    return x => fn _ => Right x
-    finally c => c (Stream {chrs=chrs.toList, position=0, consumed=False})
+    return x => fn s => Right (s.position, x)
+    finally c => c (Stream {chrs=chrs.toList, position=0})
   end
 
 abstr data Parser T O = Parser of ({E} -> SP E T ->[E] O)
@@ -98,12 +83,17 @@ pub method val (Parser c) v =
 # pub method bind (Parser c) (f : _ ->> Parser _ _) =
 #   Parser (fn (p : SP _ _) => let val = c p in (f p >.runP p))
 
+
 pub method msg (Parser c) m = 
   Parser (fn (p : SP _ _) => 
     match p.catch () with
     | None => c p
-    | Some (ESoft _ _) => p.fail m
-    | Some e => p.emit e
+    | Some (pos', msg') =>
+      let pos = p.pos () in
+      if pos' > pos then
+        p.emit (pos', msg')
+      else
+        p.fail m
     end)
 
 pub let char (c : Char) =
@@ -133,8 +123,7 @@ let isDigit (c : Char) = ('0' <= c && c <= '9')
 let soft {E} (f : SP E _ ->> _) (p : SP E _) =
   match p.catch () with
   | None => f p
-  | Some (EHard p' m) => p.emit (ESoft p' m)
-  | Some e => p.emit e
+  | Some (p', m) => p.emit (p.pos (), m)
   end
 
 pub method soft (Parser f) = Parser (soft f)
@@ -147,11 +136,12 @@ pub method before (Parser f) (Parser g) =
 
 pub method many (Parser f) =
   Parser (fn (p : SP _ _) =>
-    let rec iter () =
-      if p.flip () 
-        then soft f p :: iter ()
-        else [] in
-    iter ())
+    let rec iter (xs : List _) =
+      match p.flip () with
+      | True => let elem = f p in iter (elem :: xs)
+      | False => xs.rev
+      end in
+    iter [])
 
 pub method many1 (Parser f) =
   Parser (fn (p : SP _ _) =>
@@ -162,8 +152,9 @@ pub method many1 (Parser f) =
 pub method sepBy (valP : Parser _ _) (sepP : Parser _ _) =
   Parser (fn (p : SP _ _) =>
     if p.flip () then
-     (let xs = valP.before sepP >. many >.runP p in
-      xs + [valP.soft.runP p])
+     (let hd = valP.runP p in
+      let xs = sepP.seq valP >.many >.runP p in
+      hd :: xs)
     else
       [])
 
@@ -206,12 +197,12 @@ pub let rec parseChoice (xs : List (Parser _ _)) =
   end in
   iter p xs) : Parser _ _)
 
-
-
 pub let parseKeyword (kw : String) = 
   Parser (fn (p : SP _ _) =>
-    let wrd = isChar isLetter >.many1 >.runP p in
-    if charListToStr wrd == kw then
-      ()
+    let ~onError _ = p.fail "Empty kw" in
+    let first = char (kw.get 0) >.runP p in
+    let wrd = isChar isLetter >.many >.runP p in
+    if charListToStr ([first] + wrd) == kw then
+      kw
     else
-      p.fail "Expected \{kw}")
+      p.fail "Expected \{kw | StringFmt {escape=False}}")
