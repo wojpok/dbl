@@ -1,8 +1,6 @@
 import open Parser
 import open Format
 
-let _ = printStrLn "start"
-
 data rec Json =
   | JNum    of Int
   | JString of String
@@ -18,23 +16,33 @@ method rec format {?fmt : Unit} (self : Json) =
   | JBool b => b.format {fmt=BoolFmt{true="true", false="false"}}
   | JNull => "null"
   | JArray xs => xs.format
-  | JDict _ => "?"
+  | JDict xs =>
+    let rec iter xs =
+      match (xs : List (Pair String Json)) with
+      | [] => "}"
+      | [(k, v)] => "\{k}: \{v}}"
+      | (k, v) :: xs =>
+        "\{k}: \{v}, " + iter xs
+      end in
+      "{" + iter xs
   end
 
 let jNumber = parseNumber.lexeme.map (fn x => JNum x)
 let jNull   = parseKeyword "null"  >.lexeme >.val JNull
 let jBool   = parseKeyword "true"  >.lexeme >.val (JBool True)
-        >.or (parseKeyword "false" >.lexeme >.val (JBool False))
+         <|> (parseKeyword "false" >.lexeme >.val (JBool False))
                 
-let jString = 
+let stringParser = 
   char '"'
   >.seq (isChar (fn (x : Char) => x != '"') 
-    >.many >.map (fn xs => JString (charListToStr xs)))
+    >.many >.map (fn xs => charListToStr xs))
   >.before (char '"' >.lexeme)
+
+let jString = JString <$> stringParser
 
 rec
   let jValue () = 
-    parseChoice [jNumber, jNull, jBool, jString, delay jArray]
+    parseChoice [jNumber, jNull, jBool, jString, delay jArray, delay jDict]
     >.msg "Expected json value"
 
   let jArray () =
@@ -42,9 +50,13 @@ rec
     >.seq (delay jValue >.sepBy (char ',' >.lexeme) >.map JArray)
     >.before (char ']' >.lexeme)
 
+  let pair a b = (a, b)
+
   let jDict () =
-    char '{' >.lexeme
-    >.seq (jString >.seq (char ':' >.lexeme))
+    (char '{' >.lexeme)
+    *> ((pair <$> (stringParser <* (char ':' >.lexeme))
+              <*> (delay jValue)) >.sepBy (char ',' >.lexeme) >.map JDict)
+    <* (char '}' >.lexeme)
 end
 
 let pe (p : SP _ _) = 
@@ -56,7 +68,19 @@ let pe (p : SP _ _) =
 
 # let full p = let res = jArray.runP p in res
 
-let json = " [true, [10, 20]]"
+let json = "
+{\"menu\": {
+  \"id\": \"file\",
+  \"value\": \"File\",
+  \"popup\": {
+    \"menuitem\": [
+      {\"value\": \"New\", \"onclick\": \"CreateNewDoc()\"},
+      {\"value\": \"Open\", \"onclick\": \"OpenDoc()\"},
+      {\"value\": \"Close\", \"onclick\": \"CloseDoc()\"}
+    ]
+  }
+}}
+"
 
 let tparser = 
   parseChoice 

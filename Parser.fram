@@ -80,9 +80,14 @@ pub method map (Parser c) f =
 pub method val (Parser c) v =
   Parser (fn (p : SP _ _) => let _ = c p in v)
 
-# pub method bind (Parser c) (f : _ ->> Parser _ _) =
-#   Parser (fn (p : SP _ _) => let val = c p in (f p >.runP p))
+pub method ap (Parser c) (Parser d) =
+  Parser (fn (p : SP _ _) =>
+    let f = c p in
+    let v = d p in
+    f v)
 
+pub method bind (Parser c) (f : _ ->> Parser _ _) =
+  Parser (fn (p : SP _ _) => let val = c p in (f val >.runP p))
 
 pub method msg (Parser c) m = 
   Parser (fn (p : SP _ _) => 
@@ -170,15 +175,8 @@ pub method lexeme (v : Parser _ _) = v.before (isChar isWhite >.many)
 
 pub let parseNumber = isChar isDigit >.many1 >.map readNumber
 
-pub method or (Parser t1) (Parser t2) =
+pub method alt (Parser t1) (Parser t2) =
   Parser (fn (p : SP _ _) =>
-    if p.flip () then
-      t1 p
-    else
-      t2 p)
-
-pub let or (Parser t1, Parser t2) =
-  Parser (fn (p : SP _ _) => 
     if p.flip () then
       t1 p
     else
@@ -206,3 +204,15 @@ pub let parseKeyword (kw : String) =
       kw
     else
       p.fail "Expected \{kw | StringFmt {escape=False}}")
+
+parameter X : type
+parameter U : type
+
+pub let (*>)  {method seq    : X -> U} (self : X) = self.seq
+pub let (<*)  {method before : X -> U} (self : X) = self.before
+pub let (>>)  {method val    : X -> U} (self : X) = self.val
+pub let (>>=) {method bind   : X -> U} (self : X) = self.bind
+pub let (<|>) {method alt    : X -> U} (self : X) = self.alt
+pub let (<*>) {method ap     : X -> U} (self : X) = self.ap
+
+pub let (<$>) {method map    : X -> _ ->> _} (f) (self : X) = self.map f
