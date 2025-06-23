@@ -85,7 +85,7 @@ let tparser =
 
 let res = handle p with parserEffect json in (empty.lexeme.seq (delay jValue) >.runP p)
 
-#let res = handle p with runParser "" in tparser.runP p
+# let res = handle p with parserEffect "false" in tparser.runP p
 
 let _ = printStrLn res.format
 

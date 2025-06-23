@@ -156,12 +156,12 @@ pub method before (Parser f) (Parser g) =
 
 pub method many (Parser f) =
   Parser (fn (p : SP _) =>
-    let rec iter (xs : List _) =
+    let rec iter () =
       match p.flip () with
-      | True => let elem = f p in iter (elem :: xs)
-      | False => xs.rev
+      | True => let elem = f p in elem :: iter ()
+      | False => []
       end in
-    iter [])
+    iter ())
 
 pub method many1 (Parser f) =
   Parser (fn (p : SP _) =>
@@ -178,6 +178,17 @@ pub method sepBy (valP : Parser _) (sepP : Parser _) =
     else
       [])
 
+pub method times (Parser f) (c : Int) =
+  Parser (fn (p : SP _) =>
+    let rec iter (xs : List _) (c : Int) =
+      if c <= 0 then
+        xs.rev
+      else
+       (let elem = f p in
+        iter (elem :: xs) (c - 1))
+      in
+    iter [] c)
+
 let readNumber xs = 
   let rec iter xs (acc : Int) = 
     match xs with
@@ -186,9 +197,40 @@ let readNumber xs =
     end
   in iter xs 0
 
-pub method lexeme (v : Parser _) = v.before (isChar isWhite >.many)
-
 pub let parseNumber = isChar isDigit >.many1 >.map readNumber
+
+let readHexNumber xs =
+  let rec iter xs (acc : Int) = 
+    match xs with
+    | [] => acc
+    | (x : Char) :: xs =>
+      let code =
+        if x <= '9' then
+          x.code - '0'.code
+        else
+          x.code - 'A'.code + 10 in
+      iter xs (acc * 16 + code)
+    end
+  in iter xs 0
+
+pub let parseHexNumber = isChar (fn c => isDigit c || ('A' <= c && c <= 'F'))
+  >. many1 >.map readHexNumber
+
+# optimized variant
+let rec lexeme (p : SP _) =
+  let c = p.peek () in
+  match c with
+  | None => ()
+  | Some c =>
+    if c == ' ' || c == '\n' || c == '\t' then
+      (p.seek (); lexeme p)
+    else
+      ()
+  end
+
+pub method lexeme (v : Parser _) = v.before (lift lexeme)
+
+pub let parseEof = Parser (fn p => if p.eof () then () else p.fail "Expected eof")
 
 pub method alt (Parser t1) (Parser t2) =
   Parser (fn (p : SP _) =>
@@ -212,13 +254,14 @@ pub let rec parseChoice (xs : List (Parser _)) =
 
 pub let parseKeyword (kw : String) = 
   Parser (fn (p : SP _) =>
-    let ~onError _ = p.fail "Empty kw" in
-    let first = char (kw.get 0) >.runP p in
-    let wrd = isChar isLetter >.many >.runP p in
-    if charListToStr ([first] + wrd) == kw then
-      kw
-    else
-      p.fail "Expected \{kw | StringFmt {escape=False}}")
+    let rec mkParser (xs : List (Parser Char)) =
+      match xs with
+      | [] => pure kw
+      | p' :: xs => p'.seq (mkParser xs)
+      end in
+    mkParser (kw.toList.map char) >.runP p)
+
+pub let parseLine = isChar (fn c => '\n' != c) >.many >.before (char '\n')
 
 parameter X : type
 parameter U : type

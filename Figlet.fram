@@ -1,0 +1,154 @@
+import open Parser
+import open /Format
+import /List
+
+let readFile = (extern dbl_readFile : String -> String)
+
+let font = readFile "standard.flf"
+
+data Header =
+  { hardBlank      : Char
+  , height         : Int
+  , baseline       : Int
+  , maxLength      : Int
+  , oldLayout      : Int
+  , commentLines   : Int
+  , printDirection : Int
+  , fullLayout     : Int
+  , codetagCount   : Int }
+
+data FigChar =
+  { code  : Option Int
+  , lines : List (List Char) }
+
+data FigFont =
+  { header : Header
+  , chars  : List FigChar }
+
+let headereParser (p : SP _) =
+  let kw = parseKeyword "flf2a" >.runP p in
+  Header
+    { hardBlank = 
+          isChar (fn c => c != '\0' && c != '\n' && c != '\r' && c != ' ')
+            >.lexeme >.runP p
+    , height         = parseNumber.lexeme.runP p
+    , baseline       = parseNumber.lexeme.runP p
+    , maxLength      = parseNumber.lexeme.runP p
+    , oldLayout      = parseNumber.lexeme.runP p
+    , commentLines   = parseNumber.lexeme.runP p
+    , printDirection = parseNumber.lexeme.runP p
+    , fullLayout     = parseNumber.lexeme.runP p
+    , codetagCount   = parseNumber.lexeme.runP p }
+
+let figCharParser {~size} p =
+  let sanitizeLine (xs : List Char) =
+    match xs.rev with
+    | x :: xs => List.dropWhile (fn c => x == c) xs >.rev
+    | [] => []
+    end
+  let lines = parseLine >.times ~size >.runP p >.map sanitizeLine in
+  FigChar {code=None, lines}
+
+let codedFigCharParses {~size} p =
+  let code = (parseHexNumber <|> parseNumber) >.map Some >.runP p
+  let _ = parseLine.runP p
+  let FigChar {lines} = figCharParser p
+  in FigChar {code, lines}
+
+let fontParser (p : SP _) =
+  let header = headereParser p in
+  # Drop comment lines
+  let _ = parseLine >.times header.commentLines >.runP p in
+  let ~size = header.height in
+  # standard characters
+  # 102
+  let c = lift figCharParser >.times 30 >.runP p in
+  # custom characters
+  let o = [] in
+  #let o = lift codedFigCharParses >. many >.runP p in
+
+  #let _ = (empty.lexeme *> parseEof) >. runP p in
+  FigFont {header, chars=(c + o)} 
+
+
+# ===== Smushers =======
+
+module Smush
+  let emptySmush _ _ = None
+
+  # equal characters
+  let rule1 f (c1 : Char) (c2 : Char) =
+    if c1 == c2 then 
+      Some c1
+    else
+      f c1 c2
+  
+  method bind (xs : List _) = xs.concatMap
+
+  # underscore
+  let rule2 f (c1 : Char) (c2 : Char) =
+    if c1 == '_' && List.exists c2.equal "|/\\[]{}()<>".toList then
+      Some c2
+    else if c2 == '_' && List.exists c1.equal "|/\\[]{}()<>".toList then
+      Some c1
+    else
+      f c1 c2
+
+  # 
+  let rule3 f (c1 : Char) (c2 : Char) =
+    let classes = ["|", "/\\", "[]", "{}", "()", "<>"].map (fn (s : String) => s.toList) in
+    let index (c : Char) = List.findIndex (fn cls => List.exists c.equal cls) classes in
+    match (index c1, index c2) with
+    | (Some l1, Some l2) =>
+      if l1 > l2 then
+        Some c1
+      else if l1 < l2 then
+        Some c2
+      else
+        f c1 c2
+    | _ => f c1 c2
+    end
+
+  let rule4 f (c1 : Char) (c2 : Char) =
+    let str = charListToStr [c1, c2] in
+    if str == "()" || str == ")(" ||
+       str == "[]" || str == "][" ||
+       str == "{}" || str == "}{" then
+      Some '|'
+    else
+      f c1 c2
+
+  let rule5 f (c1 : Char) (c2 : Char) =
+    let str = charListToStr [c1, c2] in
+    if str == "/\\" then
+      Some '|'
+    else if str == "\\/" then
+      Some 'Y'
+    else if str == "><" then
+      Some 'X'
+    else
+      f c1 c2
+  
+  let rule6 {~hardBlank} f (c1 : Char) (c2 : Char) = 
+    if c1 ==  ~hardBlank && c2 == ~hardBlank then
+      Some ~hardBlank
+    else
+      f c1 c2
+
+  let createSmush {~hardBlank} (code : Int) =
+    let addRule flag rule =
+      if (code &&& flag) != 0 then
+        rule
+      else 
+        id in
+    let smush = emptySmush in
+    let smush = addRule  1 rule1 smush in
+    let smush = addRule  2 rule2 smush in
+    let smush = addRule  4 rule3 smush in
+    let smush = addRule  8 rule4 smush in
+    let smush = addRule 16 rule5 smush in
+    let smush = addRule 32 rule6 smush in
+    smush
+end
+
+

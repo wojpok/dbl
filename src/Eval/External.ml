@@ -173,4 +173,6 @@ let extern_map =
                               let ch = Bytes.sub_string buf 0 n in
                               VStr ch);
     "dbl_flush", unit_fun (fun _ -> let _ = flush stdout in v_unit);
+    "dbl_readFile", str_fun (fun fname ->
+      VStr (In_channel.with_open_text fname In_channel.input_all))
   ] |> List.to_seq |> Hashtbl.of_seq
