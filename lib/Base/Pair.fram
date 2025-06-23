@@ -1,0 +1,8 @@
+import open /Base/Types
+
+method equal
+  { X : type, method equal : X -> X ->> Bool
+  , Y : type, method equal : Y -> Y ->> Bool }
+  (p : Pair X Y) (x', y') =
+    let (x, y) = p in
+    x.equal x' && y.equal y'

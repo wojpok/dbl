@@ -1,0 +1,2 @@
+
+pub method equal () () = True

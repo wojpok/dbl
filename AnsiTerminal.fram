@@ -56,14 +56,14 @@ module Erase
   pub let eraseLine    = csi + "2K"
 end
 
-module Color
+pub module Color
   let setMode reset flag =
     if not reset then
       csi + flag + "m"
     else
       csi + "2" + flag + "m"
 
-  let resetAll = setMode False "0"
+  pub let resetAll = setMode False "0"
 
   let setBoldMode   = setMode False "1"
   let resetBoldMode = setMode True "1"
@@ -92,8 +92,8 @@ module Color
     | White   => 7
     end
   
-  let setFgColor (cl : Color) = setMode False ((cl.colorCode + 30 : Int) >. toString)
-  let setBgColor (cl : Color) = setMode False ((cl.colorCode + 40 : Int) >. toString)
+  pub let setFgColor (cl : Color) = setMode False ((cl.colorCode + 30 : Int) >. toString)
+  pub let setBgColor (cl : Color) = setMode False ((cl.colorCode + 40 : Int) >. toString)
 
   let setDflFgColor = setMode False (39.toString)
   let setDflBgColor = setMode False (49.toString)
@@ -183,5 +183,3 @@ let betterReadLine () =
   let str = iter ([], []) in
   printStrLn "";
   printStrLn str
-
-let _ = betterReadLine ()

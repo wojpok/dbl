@@ -16,15 +16,10 @@ method rec format {?fmt : Unit} (self : Json) =
   | JBool b => b.format {fmt=BoolFmt{true="true", false="false"}}
   | JNull => "null"
   | JArray xs => xs.format
-  | JDict xs =>
-    let rec iter xs =
-      match (xs : List (Pair String Json)) with
-      | [] => "}"
-      | [(k, v)] => "\{k}: \{v}}"
-      | (k, v) :: xs =>
-        "\{k}: \{v}, " + iter xs
-      end in
-      "{" + iter xs
+  | JDict xs => xs.format 
+    { fmt=ListFmt
+      { opn="{", cls="}"
+      , inner=PairFmt {opn="", sep=": ", cls=""}}}
   end
 
 let jNumber = parseNumber.lexeme.map (fn x => JNum x)
@@ -59,7 +54,7 @@ rec
     <* (char '}' >.lexeme)
 end
 
-let pe (p : SP _ _) = 
+let pe (p : SP _) = 
   let _ = char ':' >.runP p
   let _ = char ' ' >.many >.runP p
   let _ = parseNumber.runP p in
@@ -88,7 +83,7 @@ let tparser =
     , parseKeyword "false" >.val False >.msg "false"
     ] >.msg "true or false"
 
-let res = handle p with runParser json in (empty.lexeme.seq (delay jValue) >.runP p)
+let res = handle p with parserEffect json in (empty.lexeme.seq (delay jValue) >.runP p)
 
 #let res = handle p with runParser "" in tparser.runP p
 

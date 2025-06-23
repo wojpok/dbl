@@ -1,5 +1,6 @@
 import open /List
 import open /Format
+import open Test
 
 let print = (extern dbl_printStrLn : String -> Unit)
 
@@ -14,19 +15,19 @@ method seek (stream : Stream) =
 pub method toString (stream : Stream)
   = "Stream " + stream.position.format + " " + stream.chrs.format
 
-pub data SP (E : effect) T = 
+pub data SP (E : effect) = 
   { peek  : Unit ->[E] Option Char
   , seek  : Unit ->[E] Unit
   , eof   : Unit ->[E] Bool
   , pos   : Unit ->[E] Int
   , rev   : Stream ->[E] Unit
-  , fail  : {type X} -> T ->[E] X
-  , emit  : {type X} -> (Pair Int T) ->[E] X
+  , fail  : {type X} -> String ->[E] X
+  , emit  : {type X} -> (Pair Int String) ->[E] X
   , flip  : Unit ->[E] Bool
-  , catch : Unit ->[E] Option (Pair Int T)
+  , catch : Unit ->[E] Option (Pair Int String)
   }
 
-pub let runParser (chrs : String) =
+pub let parserEffect (chrs : String) =
   handler
     SP { rev = effect stream / r => fn _ => r () stream
        , eof = effect _ / r => 
@@ -65,32 +66,46 @@ pub let runParser (chrs : String) =
     finally c => c (Stream {chrs=chrs.toList, position=0})
   end
 
-abstr data Parser T O = Parser of ({E} -> SP E T ->[E] O)
+abstr data Parser O = Parser of ({E} -> SP E ->[E] O)
+
+pub let lift = Parser
 
 pub method runP (Parser f) p = f p
 
+pub let runParser (input : String) (p : Parser _) =
+  handle ef with parserEffect input in p.runP ef
+
+pub let runFParse (input : String) (f : {E} -> SP E ->[E] _) =
+  handle ef with parserEffect input in f ef
+
 pub let empty = Parser (fn _ => ())
 
-pub let delay (f : Unit ->> Parser _ _) = 
+pub let delay (f : Unit ->> Parser _) = 
   Parser (fn p => f () >. runP p)
 
 pub method map (Parser c) f = 
-  Parser (fn (p : SP _ _) => f (c p))
+  Parser (fn (p : SP _) => f (c p))
 
 pub method val (Parser c) v =
-  Parser (fn (p : SP _ _) => let _ = c p in v)
+  Parser (fn (p : SP _) => let _ = c p in v)
 
-pub method ap (Parser c) (Parser d) =
-  Parser (fn (p : SP _ _) =>
-    let f = c p in
-    let v = d p in
-    f v)
+pub method ap
+  {type A, type B}
+  ((Parser c) : Parser (A ->> B)) =
+  let f (Parser d) =
+    Parser (fn (p : SP _) =>
+      let f = c p in
+      let v = d p in
+      f v) in
+  (f : Parser A ->> Parser B)
 
-pub method bind (Parser c) (f : _ ->> Parser _ _) =
-  Parser (fn (p : SP _ _) => let val = c p in (f val >.runP p))
+pub method bind (Parser c) (f : _ ->> Parser _) =
+  Parser (fn (p : SP _) => let val = c p in (f val >.runP p))
+
+pub let pure x = empty.val x
 
 pub method msg (Parser c) m = 
-  Parser (fn (p : SP _ _) => 
+  Parser (fn (p : SP _) => 
     match p.catch () with
     | None => c p
     | Some (pos', msg') =>
@@ -102,7 +117,7 @@ pub method msg (Parser c) m =
     end)
 
 pub let char (c : Char) =
-  Parser (fn (p : SP _ _) =>
+  Parser (fn (p : SP _) =>
     match p.peek () with
     | Some c' =>
       if c == c' 
@@ -112,7 +127,7 @@ pub let char (c : Char) =
     end)
 
 pub let isChar pred =
-  Parser (fn (p : SP _ _) =>
+  Parser (fn (p : SP _) =>
     match p.peek () with
     | Some c' => 
       if pred c' 
@@ -125,7 +140,7 @@ let isWhite (c : Char) = (c == ' ' || c == '\n' || c == '\t')
 let isLetter (c : Char) = ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z')
 let isDigit (c : Char) = ('0' <= c && c <= '9')
 
-let soft {E} (f : SP E _ ->> _) (p : SP E _) =
+let soft {E} (f : SP E ->> _) (p : SP E) =
   match p.catch () with
   | None => f p
   | Some (p', m) => p.emit (p.pos (), m)
@@ -140,7 +155,7 @@ pub method before (Parser f) (Parser g) =
   Parser (fn p => let res = f p in let _ = g p in res)
 
 pub method many (Parser f) =
-  Parser (fn (p : SP _ _) =>
+  Parser (fn (p : SP _) =>
     let rec iter (xs : List _) =
       match p.flip () with
       | True => let elem = f p in iter (elem :: xs)
@@ -149,13 +164,13 @@ pub method many (Parser f) =
     iter [])
 
 pub method many1 (Parser f) =
-  Parser (fn (p : SP _ _) =>
+  Parser (fn (p : SP _) =>
     let head = f p in
     let tail = (Parser f).many.runP p in
     head :: tail)
 
-pub method sepBy (valP : Parser _ _) (sepP : Parser _ _) =
-  Parser (fn (p : SP _ _) =>
+pub method sepBy (valP : Parser _) (sepP : Parser _) =
+  Parser (fn (p : SP _) =>
     if p.flip () then
      (let hd = valP.runP p in
       let xs = sepP.seq valP >.many >.runP p in
@@ -171,20 +186,20 @@ let readNumber xs =
     end
   in iter xs 0
 
-pub method lexeme (v : Parser _ _) = v.before (isChar isWhite >.many)
+pub method lexeme (v : Parser _) = v.before (isChar isWhite >.many)
 
 pub let parseNumber = isChar isDigit >.many1 >.map readNumber
 
 pub method alt (Parser t1) (Parser t2) =
-  Parser (fn (p : SP _ _) =>
+  Parser (fn (p : SP _) =>
     if p.flip () then
       t1 p
     else
       t2 p)
 
-pub let rec parseChoice (xs : List (Parser _ _)) =
-  (Parser (fn (p : SP _ _) =>
-  let rec iter (p : SP _ _) xs =
+pub let rec parseChoice (xs : List (Parser _)) =
+  (Parser (fn (p : SP _) =>
+  let rec iter (p : SP _) xs =
     match xs with
     | Parser trans :: xs =>
       if p.flip () then
@@ -193,10 +208,10 @@ pub let rec parseChoice (xs : List (Parser _ _)) =
         iter p xs
     | [] => p.fail "Choice fail"
   end in
-  iter p xs) : Parser _ _)
+  iter p xs) : Parser _)
 
 pub let parseKeyword (kw : String) = 
-  Parser (fn (p : SP _ _) =>
+  Parser (fn (p : SP _) =>
     let ~onError _ = p.fail "Empty kw" in
     let first = char (kw.get 0) >.runP p in
     let wrd = isChar isLetter >.many >.runP p in
@@ -216,3 +231,101 @@ pub let (<|>) {method alt    : X -> U} (self : X) = self.alt
 pub let (<*>) {method ap     : X -> U} (self : X) = self.ap
 
 pub let (<$>) {method map    : X -> _ ->> _} (f) (self : X) = self.map f
+
+let ($) f x = f x
+
+method equal
+  { X : type, method equal : X -> X ->> Bool
+  , Y : type, method equal : Y -> Y ->> Bool }
+  (p : Pair X Y) (x', y') =
+    let (x, y) = p in
+    x.equal x' && y.equal y'
+
+@{test stdLib}
+let _ =
+  testSuite "Parser tests" (fn () =>
+    data ResultMatcher X =
+      | Ok of { ?pos : Int, ?res : X }
+      | Fail of { ?pos : Int, ?err : String}
+
+    method equal 
+      {X, method equal : X -> X ->> Bool}
+      (self : ResultMatcher X)
+      (res : Either (Pair Int String) (Pair Int X)) =
+        match (self, res) with
+          | Ok {pos, res}, Right (pos', res') =>
+            match pos with
+            | Some pos => pos == pos'
+            | None => True
+            end
+            &&
+            match res with
+            | Some res => res == res'
+            | None => True
+            end
+          | Fail {pos, err}, Left (pos', err') =>
+            match pos with
+            | Some pos => pos == pos'
+            | None => True
+            end
+            &&
+            match err with
+            | Some err => err == err'
+            | None => True
+            end 
+          | _ => False
+        end
+
+    let assertMatchResult 
+      {~__line__, ~testArbiter
+      , X, method equal : X -> X ->> Bool}
+      (matcher : ResultMatcher X) actual =
+        assertEq {msg="Expected parse result to match"}
+          matcher actual in
+
+    testCase "Runs empty" (fn () =>
+      let res = runParser "" empty in
+      assertMatchResult (Ok {res=()}) res);
+
+    testCase "Maps and overrides" (fn () =>
+      assertMatchResult (Ok {res=10}) (runParser "" (empty.val 10));
+      assertMatchResult (Ok {res=[()]}) (runParser "" (empty.map (fn x => [x]))));
+
+    testCase "Number parser" (fn () =>
+      assertMatchResult
+        (Ok {res=1234, pos=4})
+        (runParser "1234" parseNumber);
+      assertMatchResult
+        (Fail {pos=0})
+        (runParser "Not a number" parseNumber));
+
+    testCase "Map operator" (fn () =>
+      let succ (x : Int) = x + 1 in
+      let (ps : Parser Int) = (succ <$> parseNumber.lexeme) in
+
+      assertMatchResult
+        (Ok {res=11})
+        (runParser "10" ps));
+
+    testCase "Bind operator" (fn () =>
+      let ps = parseNumber.lexeme >>= (fn n1 =>
+               parseNumber.lexeme >>= (fn n2 =>
+               pure (n1, n2))) in
+      assertMatchResult (Ok {res=(10, 20)}) (runParser "10 20" ps));
+
+    testCase "Effect binding parsing function" (fn () =>
+      let ps p =
+        let v1 = parseNumber.lexeme.runP p
+        let v2 = parseNumber.lexeme.runP p in
+        (v1, v2) in
+        
+      assertMatchResult (Ok {res=(10, 20)}) (runFParse "10 20" ps));
+
+    testCase "Recursive delayed parsers" (fn () =>
+      rec
+        let parenths () = char '(' *> (delay brackets <|> empty) <* char ')'
+        let brackets () = char '[' *> (delay parenths <|> empty) <* char ']'
+
+      end in 
+      assertMatchResult (Ok {pos=8}) (runParser "([([])])" (delay parenths)));
+    ())
