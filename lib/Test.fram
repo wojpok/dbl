@@ -164,18 +164,23 @@ pub let assertDoesNotCallOnError
       {msg = "Expected function to not call on error implicit"}
       (callsOnError f)
 
-let _ = testSuite "Example test suite" (fn () => 
-  testCase "Assert True" (fn () =>
-    assertTrue (1 == 1));
-  
-  testCase "Assert False" (fn () =>
-    assertFalse (1 == 2));
-  
-  testCase "Assert eq" (fn () =>
-    assertEq "abc" "abc");
-  
-  testCase "Calls on error" (fn () =>
+let _ = testSuite "Prelude/*" (fn () => 
+  testCase "`chr` calls on error" (fn () =>
     assertCallsOnError (fn _ => chr 300));
   
-  testCase "Does not call on error" (fn () =>
-    assertDoesNotCallOnError (fn _ => chr 127)))
+  testCase "`chr` does not call on error" (fn () =>
+    assertDoesNotCallOnError (fn _ => chr 127));
+  
+  testCase "`mkStr` count = 0" (fn _ =>
+    assertEq (mkStr "abc" 0) "");
+    
+  testCase "`mkStr` count < 0" (fn _ =>
+    assertEq (mkStr "abc" (-1)) "";
+    assertEq (mkStr "abc" (-10)) "");
+  
+  testCase "`mkStr` count > 0" (fn _ =>
+    assertEq (mkStr "abc" 1) "abc";
+    assertEq (mkStr "abc" 2) "abcabc";
+    assertEq (mkStr "abc" 3) "abcabcabc";
+    assertEq (mkStr "abc" 5) "abcabcabcabcabc");
+  ())

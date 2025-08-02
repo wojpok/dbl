@@ -32,4 +32,7 @@ pub method format
   , X : type
   , method format : X ->> String }
   (self : Lazy E X) =
-    "Lazy " + self.force.format
+    "(lazy (fn () => " + self.force.format + "))"
+
+pub method map {E : effect, X : type} (self : Lazy E X) f =
+  lazy (fn _ => f self.force)

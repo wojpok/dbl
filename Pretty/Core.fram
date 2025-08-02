@@ -1,0 +1,113 @@
+import open Size
+import open Lines
+import open /Test
+import /List
+
+type Layout = Pair Size DocLines
+
+method combine ((x1, y1) : Layout) ((x2, y2) : Layout) =
+  (x1.combine x2, y1.combine y2)
+
+pub data ODoc = ODoc of (Int ->[] List Layout)
+
+let (<>) {X, method combine : X -> X ->[] X} (x : X) = x.combine
+
+let paretoSelector
+  {X : type}
+  (poset : X -> X ->[] Bool)
+  (seq : List X) = 
+    let rec iter (mins : List X) (seq : List X) =
+      match seq with
+      | [] => mins.rev
+      | x :: seq =>
+        match List.findIndex (fn y => poset y x) mins with
+        | Some _ => iter mins seq
+        | None => (iter (x :: mins) seq)
+        end
+      end in
+    iter [] seq
+
+let rec mergeOn sel (xs : List _) (ys : List _) =
+  match xs with
+  | [] => ys
+  | x :: xs' => match ys with
+    | [] => xs
+    | y :: ys' =>
+      if sel x y then
+        x :: mergeOn sel xs' ys
+      else
+        y :: mergeOn sel xs ys'
+    end
+  end
+
+let rec mergeAllOn sel (xss : List _) = match xss with
+  | [] => []
+  | x :: ys => mergeOn sel x (mergeAllOn sel ys)
+  end
+
+let bestOn ord poset xss =
+  paretoSelector poset (mergeAllOn ord xss)
+
+let poset (w1 : Size) (w2 : Size) =
+  match w1.reset, w2.reset with
+  | Size {height=h1, width=SLast l1 (SFix m1)}
+  , Size {height=h2, width=SLast l2 (SFix m2)}
+    => m1 < m2 && h1 < h2 && l1 < l2
+  | _ => impossible ()
+  end 
+
+let ord (w1 : Size) (w2 : Size) =
+  match w1.reset, w2.reset with
+  | Size {height=h1, width=SLast l1 (SFix m1)}
+  , Size {height=h2, width=SLast l2 (SFix m2)}
+    => h1 < h2 || (h1 == h2 && (m1 < m2 || (m1 == m2 && l1 < l2)))
+  | _ => impossible ()
+  end
+
+let quasifilter (w : Int) (f : _ -> Size) (ws : List _) =
+  match ws with
+  | [] => [] #impossible ()
+  | [x] => [x]
+  | xs =>
+    let maxWidth (w : Size) =
+      match w.reset with
+      | Size {width=SLast _ (SFix i)} => i
+      | _ => impossible ()
+      end in
+
+    match List.filter (fn x => maxWidth (f x) <= w) (xs) with
+    | [] =>
+      let el = List.foldr1
+      (fn x y =>
+        if maxWidth (f x) <= maxWidth (f y) then x else y)
+      xs in [el]
+    | xs => xs
+    end
+  end
+
+let discardInvalid w = quasifilter w (fst)
+
+let (>>=) (xs : List _) f = xs.concatMap f
+
+pub method combine (ODoc xs) (ODoc ys) = ODoc (fn w =>
+  let ds = xs w >>= (fn x =>
+      [discardInvalid w (ys w >>= (fn y => [x <> y]))]) in
+  bestOn
+    (fn x y => ord (fst x) (fst y))
+    (fn x y => poset (fst x) (fst y))
+      ds)
+
+
+pub method flush (ODoc xs) = ODoc (fn w =>
+  xs w >.map (fn ((x, y) : Layout) => (x.flush, y.flush)))
+
+pub method reset (ODoc xs) = ODoc (fn w =>
+  xs w >.map (fn ((x, y) : Layout) => (x.reset, y.reset x.width)))
+
+pub method shift (ODoc xs) = ODoc (fn w =>
+  xs w >.map (fn ((x, y) : Layout) => (x.shift, y.shift)))
+
+# pub method combine (ODoc xs) = ODoc (fn w =>
+#   xs w >.map (fn (())))
+
+let _ = testSuite "Pretty/Core" (fn _ => ())

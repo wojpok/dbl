@@ -19,7 +19,7 @@ type Dangling = Int
   The `SLast' node is a label that indicates a line where <> will attach
   foramatted text. In every Size object there is exactly one SLast node.
  ##}
-data rec SList =
+pub data rec SList =
   | SFix   of Width
   | SShift of Width, Dangling, SList
   | SLast  of Width, SList
@@ -44,7 +44,7 @@ method rec equal (s1 : SList) (s2 : SList) =
 
   Height is given explicitly, width is stored as a `shift list'.
  ##}
-data Size =
+pub data Size =
   { width  : SList
   , height : Int
   }
@@ -62,7 +62,7 @@ let text (s : String) = Size {width=SLast s.length (SFix s.length), height=0}
 let empty = text ""
 
 {## Inserts newline ##}
-method flush (Size {width, height}) =
+pub method flush (Size {width, height}) =
   let rec dropL w = match w with
     | SShift i j tl => SShift i j (dropL tl)
     | SLast _ tl => tl
@@ -81,7 +81,7 @@ method flush (Size {width, height}) =
                                         |         __|
                                         |________|                
  ##}
-method combine (w1 : Size) (w2 : Size) =
+pub method combine (w1 : Size) (w2 : Size) =
   let height = w1.height + w2.height in
 
   # Moves a shift list by a fixed amount
@@ -128,7 +128,7 @@ method combine (w1 : Size) (w2 : Size) =
   Size {width = copyTillL w1.width w2.width, height}
 
 {## Fixes shifts in place and propagates fixed width information ##}
-method reset (w : Size) =
+pub method reset (w : Size) =
   let rec iter (xs : SList) = match xs with
     | SFix fix => (fix, None)
     | SLast last tl => (fst (iter tl), Some last)
@@ -144,7 +144,7 @@ method reset (w : Size) =
   end
 
 {## Adds an empty shift. ##}
-method shift (Size {width, height}) =
+pub method shift (Size {width, height}) =
   Size {width = SShift 0 0 width, height}
 
 {##
@@ -187,7 +187,7 @@ let (<>)  (s : Size) = s.combine
 let ($$)  (s : Size) = s.flush.combine
 let (<+>) (s : Size) = s.seq
 
-let _ = testSuite "PrettyPrinter/Size" (fn () =>
+let _ = testSuite "Pretty/Size" (fn () =>
   testCase "Empty has 0 width" (fn () =>
     assertEq empty.width (SLast 0 (SFix 0)));
     
