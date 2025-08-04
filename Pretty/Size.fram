@@ -183,87 +183,104 @@ method seq {~__line__, ~__file__} w1 w2 =
   let ~onError () = runtimeError "Cannot perform vcat" in
   seqE w1 w2
 
+pub let poset (w1 : Size) (w2 : Size) =
+  match w1.reset, w2.reset with
+  | Size {height=h1, width=SLast l1 (SFix m1)}
+  , Size {height=h2, width=SLast l2 (SFix m2)}
+    => m1 < m2 && h1 < h2 && l1 < l2
+  | _ => impossible ()
+  end 
+
+pub let ord (w1 : Size) (w2 : Size) =
+  match w1.reset, w2.reset with
+  | Size {height=h1, width=SLast l1 (SFix m1)}
+  , Size {height=h2, width=SLast l2 (SFix m2)}
+    => h1 < h2 || (h1 == h2 && (m1 < m2 || (m1 == m2 && l1 < l2)))
+  | _ => impossible ()
+  end
+
 let (<>)  (s : Size) = s.combine
 let ($$)  (s : Size) = s.flush.combine
 let (<+>) (s : Size) = s.seq
 
 let _ = testSuite "Pretty/Size" (fn () =>
-  testCase "Empty has 0 width" (fn () =>
+  testCase "`empty` has 0 width" (fn () =>
     assertEq empty.width (SLast 0 (SFix 0)));
     
-  testCase "Empty has 0 height" (fn () =>
+  testCase "`empty` has 0 height" (fn () =>
     assertEq empty.height 0);
   
-  testCase "Text has fix width" (fn () =>
+  testCase "`text` fix width" (fn () =>
     ["", "abc", "jak-to-jest-byc-skyba?"].iter (fn str =>
       assertEq (text str).width (SLast str.length (SFix str.length))));
     
-  testCase "Text has 0 height" (fn () =>
+  testCase "`text` 0 height" (fn () =>
     ["", "abc", "jak-to-jest-byc-skyba?"].iter (fn str =>
       assertEq (text str).height 0));
   
-  testCase "Empty text <> identity" (fn () => 
+  testCase "`<>` identity" (fn () => 
     let t = text "abc" in
     assertEq t (t <> empty);
     assertEq t (empty <> t));
   
-  testCase "Simple text <>" (fn () => 
+  testCase "`<>` simple text" (fn () => 
     let t = text "abc" <> text "def" in
     assertEq t.width (SLast 6 (SFix 6));
     assertEq t.height 0);
   
-  testCase "Semigroup <>" (fn () =>
+  testCase "`<>` semigroup" (fn () =>
     let t1 = text "defghijk"
     let t2 = text "abc"
     let t3 = text "asdasd" in
     assertEq ((t1 <> t2) <> t3) (t1 <> (t2 <> t3)));
 
-  testCase "Simple flush" (fn () =>
+  testCase "`flush`" (fn () =>
     let t = text "abc" >. flush in
     assertEq t.height 1;
     assertEq t.width (SLast 0 (SFix 3)));
 
-  testCase "Simple $$ 1" (fn () =>
+  testCase "`$$` 1" (fn () =>
     let t = text "abc" $$ text "defghijk" in
     assertEq t.height 1;
     assertEq t.width (SLast 8 (SFix 8)));
   
-  testCase "Simple $$ 2" (fn () =>
+  testCase "`$$` 2" (fn () =>
     let t = text "defghijk" $$ text "abc" in
     assertEq t.height 1;
     assertEq t.width (SLast 3 (SFix 8)));
   
-  testCase "Semigroup $$" (fn () =>
+  testCase "`$$` semigroup" (fn () =>
     let t1 = text "defghijk"
     let t2 = text "abc"
     let t3 = text "asdasd" in
     assertEq ((t1 $$ t2) $$ t3) (t1 $$ (t2 $$ t3)));
   
-  testCase "Semigroup <> with $$" (fn () =>
+  testCase "`<>` `$$` semigroup" (fn () =>
     let t1 = text "aaaaaaaaaa" $$ text "aa"
     let t2 = text "bbb" $$ text "bbbbbb"
     let t3 = text "ccccccc" $$ text "cc" in
     assertEq ((t1 <> t2) <> t3) (t1 <> (t2 <> t3)));
   
-  testCase "Simple shift" (fn () =>
+  testCase "`shift` simple" (fn () =>
     let t1 = text "abc" >.shift in
     assertEq t1.height 0;
     assertEq t1.width (SShift 0 0 (SLast 3 (SFix 3))));
 
-  testCase "Reset identity over text" (fn () =>
-    let t1 = text "abc" in
-    assertEq t1 t1.reset);
-  
-  testCase "Shift add width" (fn () =>
+  testCase "`shift` adds width" (fn () =>
     let t = text "abc" in
     assertEqF (t <> t.shift).width (SShift 3 3 (SLast 3 (SFix 3))));
-
-  testCase "Shift/reset" (fn () =>
-    let t = text "abc" in
-    assertEqF (t <> t.shift).reset.width (SLast 6 (SFix 6)));
   
-  testCase "Shift aligns paraller structures" (fn () =>
+  testCase "`shift` aligns paraller structures" (fn () =>
     let t1 = text "aaaaa" <> (text "bb" >.shift)    <> (text "ccccc" >.shift)
     let t2 = text "aa"    <> (text "bbbbb" >.shift) <> (text "cc" >. shift) in
     assertEqF (t1 $$ t2).width (SShift 5 5 (SShift 5 5 (SLast 2 (SFix 5)))));
-    ())
+  
+  testCase "`reset` identity over text" (fn () =>
+    let t1 = text "abc" in
+    assertEq t1 t1.reset);
+
+  testCase "`reset` `shift` fixes width" (fn () =>
+    let t = text "abc" in
+    assertEqF (t <> t.shift).reset.width (SLast 6 (SFix 6)));
+  
+  ())

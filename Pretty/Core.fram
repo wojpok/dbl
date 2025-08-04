@@ -22,7 +22,7 @@ let paretoSelector
       | x :: seq =>
         match List.findIndex (fn y => poset y x) mins with
         | Some _ => iter mins seq
-        | None => (iter (x :: mins) seq)
+        | None => iter (x :: mins) seq
         end
       end in
     iter [] seq
@@ -48,44 +48,30 @@ let rec mergeAllOn sel (xss : List _) = match xss with
 let bestOn ord poset xss =
   paretoSelector poset (mergeAllOn ord xss)
 
-let poset (w1 : Size) (w2 : Size) =
-  match w1.reset, w2.reset with
-  | Size {height=h1, width=SLast l1 (SFix m1)}
-  , Size {height=h2, width=SLast l2 (SFix m2)}
-    => m1 < m2 && h1 < h2 && l1 < l2
-  | _ => impossible ()
-  end 
-
-let ord (w1 : Size) (w2 : Size) =
-  match w1.reset, w2.reset with
-  | Size {height=h1, width=SLast l1 (SFix m1)}
-  , Size {height=h2, width=SLast l2 (SFix m2)}
-    => h1 < h2 || (h1 == h2 && (m1 < m2 || (m1 == m2 && l1 < l2)))
+let maxWidth (w : Size) =
+  match w.reset with
+  | Size {width=SLast _ (SFix i)} => i
   | _ => impossible ()
   end
 
-let quasifilter (w : Int) (f : _ -> Size) (ws : List _) =
+# assumes non-empty input and returns non empty output
+let quasifilter {X} (pred : X ->[] Bool) (ord : X -> X ->[] Bool) (ws : List X) =
   match ws with
-  | [] => [] #impossible ()
+  | [] => impossible ()
   | [x] => [x]
   | xs =>
-    let maxWidth (w : Size) =
-      match w.reset with
-      | Size {width=SLast _ (SFix i)} => i
-      | _ => impossible ()
-      end in
-
-    match List.filter (fn x => maxWidth (f x) <= w) (xs) with
+    match List.filter pred xs with
     | [] =>
-      let el = List.foldr1
-      (fn x y =>
-        if maxWidth (f x) <= maxWidth (f y) then x else y)
-      xs in [el]
+      let el = List.foldr1 (fn x y => if ord x y then x else y) xs in
+      [el]
     | xs => xs
     end
   end
 
-let discardInvalid w = quasifilter w (fst)
+let discardInvalid (w : Int) =
+  quasifilter
+    (fn s => maxWidth (fst s) < w)
+    (fn x y => maxWidth (fst x) <= maxWidth (fst y))
 
 let (>>=) (xs : List _) f = xs.concatMap f
 
@@ -110,4 +96,98 @@ pub method shift (ODoc xs) = ODoc (fn w =>
 # pub method combine (ODoc xs) = ODoc (fn w =>
 #   xs w >.map (fn (())))
 
-let _ = testSuite "Pretty/Core" (fn _ => ())
+let _ = testSuite "Pretty/Core" (fn _ =>
+  testCase "`paretoSelector` empty" (fn _ =>
+    assertEqF [] (paretoSelector (fn x y => False) ([] : List Int)));
+
+  testCase "`paretoSelector` singleton" (fn _ =>
+    [0, 10, 50, 2137].iter (fn x =>
+      assertEqF [x] (paretoSelector (fn x y => False) [x])));
+  
+  let cmpInts (x : Int) (y : Int) = x <= y in
+
+  testCase "`paretoSelector` pairs" (fn _ =>
+    assertEqF [10]     (paretoSelector cmpInts [10, 20]);
+    assertEqF [20, 10] (paretoSelector cmpInts [20, 10]);
+    assertEqF [10]     (paretoSelector cmpInts [10, 10]));
+
+  testCase "`paretoSelector` many" (fn _ =>
+    assertEqF [10]         (paretoSelector cmpInts [10, 20, 30, 40, 50, 60]);
+    assertEqF [30, 20, 10] (paretoSelector cmpInts [30, 20, 10]);
+    assertEqF [30, 10, 5]  (paretoSelector cmpInts [30, 10, 10, 20, 5]));
+
+  testCase "`mergeOn` empty" (fn _ =>
+    assertEqF [] (mergeOn cmpInts [] []));
+  
+  testCase "`mergeOn` singletons" (fn _ =>
+    assertEqF [1, 2] (mergeOn cmpInts [2] [1]);
+    assertEqF [1, 2] (mergeOn cmpInts [1] [2]));
+  
+  testCase "`mergeOn` many" (fn _ =>
+    assertEqF
+      [1, 2, 3, 4, 5, 6, 7, 8]
+      (mergeOn cmpInts [1, 3, 5, 7] [2, 4, 6, 8]);
+    assertEqF
+      [1, 2, 3, 4, 5, 6]
+        (mergeOn cmpInts [1, 2, 5] [3, 4, 6]));
+  
+  testCase "`mergeAllOn` empty" (fn _ =>
+    assertEqF [] (mergeAllOn cmpInts []));
+  
+  testCase "`mergeAllOn` empties" (fn _ =>
+    assertEqF [] (mergeAllOn cmpInts [[], [], []]));
+  
+  testCase "`mergeAllOn` singletons" (fn _ =>
+    assertEqF [1, 2, 3] (mergeAllOn cmpInts [[2], [1], [3]]);
+    assertEqF [1, 2, 3] (mergeAllOn cmpInts [[3], [2], [1]]));
+  
+  testCase "`mergeAllOn` manies" (fn _ =>
+    assertEqF
+      [1, 2, 3, 4, 5, 6, 7, 8]
+      (mergeAllOn cmpInts [[1, 3], [], [2, 4, 6, 8], [5, 7]]));
+  
+  let ordPairs (x1, y1) (x2, y2) =
+    (x1 : Int) < x2 || (x1 == x2 && (y1 : Int) < y2) in
+
+  let posetPairs (x1, y1) (x2, y2) =
+    (((x1 : Int) <= x2) && ((y1 : Int) <= y2)) in
+
+  let pairEq (x1, y1) (x2, y2) =
+    ((x1 : Int) == x2 && (y1 : Int) == y2) in
+
+  method equal = pairEq in
+
+  testCase "`bestOn` empty" (fn _ =>
+    assertEqF [] (bestOn ordPairs posetPairs []));
+  
+  testCase "`bestOn` empties" (fn _ =>
+    assertEqF [] (bestOn ordPairs posetPairs [[], [], []]));
+  
+  testCase "`bestOn` singletons" (fn _ =>
+    assertEqF
+      [(1, 1), (3, 0)]
+      (bestOn ordPairs posetPairs [[(2, 1)], [(1, 1)], [(3, 0)]]);
+    assertEqF
+      [(5, 6)]
+      (bestOn ordPairs posetPairs [[(5, 6)], [(6, 7)], [(5, 7)]]));
+  
+  testCase "`bestOn` manies" (fn _ =>
+    assertEqF
+      [(1, 3), (6, 0)]
+      (bestOn ordPairs posetPairs [[(1, 3)], [], [(2, 4), (6, 0)], [(5, 7)]]));
+
+  testCase "`quasifilter` singleton" (fn _ =>
+    assertEqF [1] (quasifilter (fn _ => False) cmpInts [1]);
+    assertEqF [1] (quasifilter (fn _ => True)  cmpInts [1]));
+  
+  testCase "`quasifilter` filters" (fn _ =>
+    assertEqF [1, 2, 1] (quasifilter (fn x => 5 > x) cmpInts [1, 10, 6, 2, 1]);
+    assertEqF [6, 7] (quasifilter (fn x => 4 % x == 4)  cmpInts [1, 6, 7, 2]));
+
+  testCase "`quasifilter` selects minimum" (fn _ =>
+    assertEqF [0] (quasifilter (fn x => False) cmpInts [2, 1, 3, 7, 0, 42]);
+    assertEqF
+      [(0, 0)]
+      (quasifilter (fn x => False) ordPairs [(2, 1), (1, 2), (3, 3), (0, 0)]));
+  
+  ())

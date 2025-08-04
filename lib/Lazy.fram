@@ -1,3 +1,5 @@
+import /Test
+
 data RefP = RefP of {Ref : type -> type}
 
 let RefP {Ref} = (extern dbl_abstrType : Unit -> RefP) ()
@@ -36,3 +38,18 @@ pub method format
 
 pub method map {E : effect, X : type} (self : Lazy E X) f =
   lazy (fn _ => f self.force)
+
+let _ =
+  open Test in
+  testSuite "Lazy" (fn _ =>
+    testCase "`lazy.force` indentity" (fn _ =>
+      assertEqF 10 (lazy (fn _ => 10)).force);
+
+    testCase "`lazy` does not call ~onError" (fn _ =>
+      assertDoesNotCallOnError (fn {E, ~onError : Unit ->[E] Char} () =>
+        let _ = (lazy (fn _ => chr 300) : Lazy E Char) in ()));
+    
+    testCase "`lazy.force` calls ~onError" (fn _ =>
+      assertCallsOnError (fn {E, ~onError : Unit ->[E] Char} () =>
+        let _ = (lazy (fn _ => chr 300) : Lazy E Char).force in ()));
+    ())

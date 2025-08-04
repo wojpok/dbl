@@ -147,8 +147,7 @@ pub let assertEqF
 pub let assertCallsOnError
   { ~__line__
   , ~testArbiter
-  , ?msg : String
-  , E : effect }
+  , ?msg : String }
   (f : {E, ~onError : _ ->[E] _} -> Unit ->[E] _ ) =
     assertTrue
       {msg = "Expected function to call on error implicit"}
@@ -157,8 +156,7 @@ pub let assertCallsOnError
 pub let assertDoesNotCallOnError
   { ~__line__
   , ~testArbiter
-  , ?msg : String
-  , E : effect }
+  , ?msg : String }
   (f : {E, ~onError : _ ->[E] _} -> Unit ->[E] _ ) =
     assertFalse
       {msg = "Expected function to not call on error implicit"}
