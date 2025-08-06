@@ -56,10 +56,10 @@ method equal (w1 : Size) (w2 : Size) =
   w1.width == w2.width && w1.height == w2.height
 
 {## Constructs Size object for a singular string ##}
-let text (s : String) = Size {width=SLast s.length (SFix s.length), height=0}
+pub let textSize (s : String) = Size {width=SLast s.length (SFix s.length), height=0}
 
 {## Empty width ##}
-let empty = text ""
+pub let emptySize = textSize ""
 
 {## Inserts newline ##}
 pub method flush (Size {width, height}) =
@@ -204,83 +204,83 @@ let ($$)  (s : Size) = s.flush.combine
 let (<+>) (s : Size) = s.seq
 
 let _ = testSuite "Pretty/Size" (fn () =>
-  testCase "`empty` has 0 width" (fn () =>
-    assertEq empty.width (SLast 0 (SFix 0)));
+  testCase "`emptySize` has 0 width" (fn () =>
+    assertEq emptySize.width (SLast 0 (SFix 0)));
     
-  testCase "`empty` has 0 height" (fn () =>
-    assertEq empty.height 0);
+  testCase "`emptySize` has 0 height" (fn () =>
+    assertEq emptySize.height 0);
   
-  testCase "`text` fix width" (fn () =>
+  testCase "`textSize` fix width" (fn () =>
     ["", "abc", "jak-to-jest-byc-skyba?"].iter (fn str =>
-      assertEq (text str).width (SLast str.length (SFix str.length))));
+      assertEq (textSize str).width (SLast str.length (SFix str.length))));
     
-  testCase "`text` 0 height" (fn () =>
+  testCase "`textSize` 0 height" (fn () =>
     ["", "abc", "jak-to-jest-byc-skyba?"].iter (fn str =>
-      assertEq (text str).height 0));
+      assertEq (textSize str).height 0));
   
   testCase "`<>` identity" (fn () => 
-    let t = text "abc" in
-    assertEq t (t <> empty);
-    assertEq t (empty <> t));
+    let t = textSize "abc" in
+    assertEq t (t <> emptySize);
+    assertEq t (emptySize <> t));
   
   testCase "`<>` simple text" (fn () => 
-    let t = text "abc" <> text "def" in
+    let t = textSize "abc" <> textSize "def" in
     assertEq t.width (SLast 6 (SFix 6));
     assertEq t.height 0);
   
   testCase "`<>` semigroup" (fn () =>
-    let t1 = text "defghijk"
-    let t2 = text "abc"
-    let t3 = text "asdasd" in
+    let t1 = textSize "defghijk"
+    let t2 = textSize "abc"
+    let t3 = textSize "asdasd" in
     assertEq ((t1 <> t2) <> t3) (t1 <> (t2 <> t3)));
 
   testCase "`flush`" (fn () =>
-    let t = text "abc" >. flush in
+    let t = textSize "abc" >. flush in
     assertEq t.height 1;
     assertEq t.width (SLast 0 (SFix 3)));
 
   testCase "`$$` 1" (fn () =>
-    let t = text "abc" $$ text "defghijk" in
+    let t = textSize "abc" $$ textSize "defghijk" in
     assertEq t.height 1;
     assertEq t.width (SLast 8 (SFix 8)));
   
   testCase "`$$` 2" (fn () =>
-    let t = text "defghijk" $$ text "abc" in
+    let t = textSize "defghijk" $$ textSize "abc" in
     assertEq t.height 1;
     assertEq t.width (SLast 3 (SFix 8)));
   
   testCase "`$$` semigroup" (fn () =>
-    let t1 = text "defghijk"
-    let t2 = text "abc"
-    let t3 = text "asdasd" in
+    let t1 = textSize "defghijk"
+    let t2 = textSize "abc"
+    let t3 = textSize "asdasd" in
     assertEq ((t1 $$ t2) $$ t3) (t1 $$ (t2 $$ t3)));
   
   testCase "`<>` `$$` semigroup" (fn () =>
-    let t1 = text "aaaaaaaaaa" $$ text "aa"
-    let t2 = text "bbb" $$ text "bbbbbb"
-    let t3 = text "ccccccc" $$ text "cc" in
+    let t1 = textSize "aaaaaaaaaa" $$ textSize "aa"
+    let t2 = textSize "bbb" $$ textSize "bbbbbb"
+    let t3 = textSize "ccccccc" $$ textSize "cc" in
     assertEq ((t1 <> t2) <> t3) (t1 <> (t2 <> t3)));
   
   testCase "`shift` simple" (fn () =>
-    let t1 = text "abc" >.shift in
+    let t1 = textSize "abc" >.shift in
     assertEq t1.height 0;
     assertEq t1.width (SShift 0 0 (SLast 3 (SFix 3))));
 
   testCase "`shift` adds width" (fn () =>
-    let t = text "abc" in
+    let t = textSize "abc" in
     assertEqF (t <> t.shift).width (SShift 3 3 (SLast 3 (SFix 3))));
   
   testCase "`shift` aligns paraller structures" (fn () =>
-    let t1 = text "aaaaa" <> (text "bb" >.shift)    <> (text "ccccc" >.shift)
-    let t2 = text "aa"    <> (text "bbbbb" >.shift) <> (text "cc" >. shift) in
+    let t1 = textSize "aaaaa" <> (textSize "bb" >.shift)    <> (textSize "ccccc" >.shift)
+    let t2 = textSize "aa"    <> (textSize "bbbbb" >.shift) <> (textSize "cc" >. shift) in
     assertEqF (t1 $$ t2).width (SShift 5 5 (SShift 5 5 (SLast 2 (SFix 5)))));
   
   testCase "`reset` identity over text" (fn () =>
-    let t1 = text "abc" in
+    let t1 = textSize "abc" in
     assertEq t1 t1.reset);
 
   testCase "`reset` `shift` fixes width" (fn () =>
-    let t = text "abc" in
+    let t = textSize "abc" in
     assertEqF (t <> t.shift).reset.width (SLast 6 (SFix 6)));
   
   ())

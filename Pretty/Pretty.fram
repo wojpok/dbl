@@ -1,4 +1,26 @@
 import Core
 import /Test
 
+pub type Doc = Core.ODoc
+
+pub let text str = Core.text str
+
+pub let empty = Core.emptyDoc
+
+pub let flush (d1 : Doc) = d1.flush
+
+pub method flush = flush
+
+pub let shift (d1 : Doc) = d1.shift
+
+pub method shift = shift
+
+pub let reset (d1 : Doc) = d1.reset
+
+pub method reset = reset
+
+pub let (<>) (d1 : Doc) (d2 : Doc) = d1.combine d2
+
+pub let ($$) (d1 : Doc) (d2 : Doc) = d1.flush.combine d2
+
 let _ = Test.testSuite "Pretty/Pretty" id

@@ -44,7 +44,7 @@ data Line = {fill : L, str : L}
 method format {?fmt : Unit} (Line {fill, str}) =
   "Line {fill = \{fill}, line = \{str}}"
 
-let emptyLine = Line {fill = LEmpty, str = LEmpty}
+pub let emptyLine = Line {fill = LEmpty, str = LEmpty}
 
 type Lines = List Line
 
@@ -158,7 +158,12 @@ let unlines w (xs : Lines) =
     end in
   fold strs
 
+pub let onlySingleLine = List.takeWhile (fn (Size.Size {height}, _) => height == 0)
+
 pub type DocLines = Lazy [] Lines
+
+pub let textLines (str : String) =
+  (lazy (fn _ => [Line {fill = LFill str.length LEmpty, str = LStr str}]) : DocLines)
 
 pub method flush (lines : DocLines) =
   pureLazy (fn _ => lines.force.flush)
