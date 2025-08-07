@@ -69,7 +69,7 @@ let maxWidth (w : Size) =
 # assumes non-empty input and returns non empty output
 let quasifilter {X} (pred : X ->[] Bool) (ord : X -> X ->[] Bool) (ws : List X) =
   match ws with
-  | [] => impossible ()
+  | [] => []
   | [x] => [x]
   | xs =>
     match List.filter pred xs with
@@ -125,7 +125,7 @@ pub let groupingBy (sep : String) (ms : List (Pair Int ODoc)) =
       (fn x y => ord (fst x) (fst y))
       (fn x y => poset (fst x) (fst y))
       [hor, ver] in
-    ls) # discardInvalid w ls)
+    (ls : List Layout)) # discardInvalid w ls)
   end
 
 pub method flush (ODoc xs) = ODoc (fn w =>
@@ -137,8 +137,15 @@ pub method reset (ODoc xs) = ODoc (fn w =>
 pub method shift (ODoc xs) = ODoc (fn w =>
   xs w >.map (fn ((x, y) : Layout) => (x.shift, y.shift)))
 
-# pub method combine (ODoc xs) = ODoc (fn w =>
-#   xs w >.map (fn (())))
+pub let generate {?width : Int} (ODoc xs) =
+  let width = width.unwrapOr 80 in
+  match xs width with
+  | [] => runtimeError "Layout selection error"
+  | (_, layout) :: _ =>
+    let lines = layout.force in
+    (unlines width lines : String)
+  end
+
 
 let _ = testSuite "Pretty/Core" (fn _ =>
   testCase "`paretoSelector` empty" (fn _ =>

@@ -1,1 +1,27 @@
-import Pretty/Pretty
+import open Pretty/Pretty
+import /List
+
+data rec SExpr
+  = Atom of String
+  | List of List SExpr
+
+method rec format (self : SExpr) =
+  match self with
+  | Atom s => text s
+  | List [] => text "()"
+  | List xs => text "(" <> sep
+    (List.map (fn (d : SExpr) => d.format) xs) <> text ")"
+  end
+
+let sampleExpr =
+  List [ Atom "xs"
+       , Atom "="
+       , Atom "1"
+       , Atom "+"
+       , Atom "2" ]
+
+let sampleMulti = List [sampleExpr, sampleExpr, sampleExpr]
+
+let _ = printStrLn (generate {width = 40} sampleMulti.format)
+let _ = printStrLn (generate {width = 20} sampleMulti.format)
+let _ = printStrLn (generate {width = 10} sampleMulti.format)

@@ -150,7 +150,7 @@ let rec genL {~h : State _} (self : L) = match self with
     mkStr " " s + genL tl
   end
 
-let unlines w (xs : Lines) =
+pub let unlines w (xs : Lines) =
   let strs = List.map (fn (x : Line) => handle ~h with stateH w in genL x.str) xs in
   let rec fold (xs : List String) = match xs with
     | [] => ""
