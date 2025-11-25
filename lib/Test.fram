@@ -1,0 +1,272 @@
+{# This file is part of DBL, released under MIT license.
+   See LICENSE for details.
+ #}
+
+import open AnsiTerminal
+import open Mutable
+import List
+
+{# ========================================================================= #}
+
+parameter ~prefix : List String
+
+data Loc = {line : Int, file : String}
+
+let mkLoc {~__line__, ~__file__} = Loc {line = ~__line__, file = ~__file__}
+
+data LogType = LT_Assert | LT_Expect | LT_Accept | LT_Log
+
+## Information about assertion fail in test
+data LogInfo =
+  { msg     : Option String
+  , loc     : Loc
+  , logType : LogType
+  }
+
+data TestResult = TR_Fail | TR_Accept
+
+data TestCase =
+  { name : String
+  , loc  : Loc
+  , body : Unit ->[IO] Pair (List LogInfo) TestResult
+  }
+
+data TestLog =
+  { test   : TestCase
+  , prefix : List String
+  , logIdx : Option Int
+  , logs   : List LogInfo
+  , result : TestResult
+  }
+
+abstr data rec TestSuite =
+  { name   : String
+  , loc    : Loc
+  , suites : Ref IO (List TestSuite)
+  , tests  : Ref IO (List TestCase)
+  }
+
+{# ========================================================================= #}
+{# Printing functions #}
+
+parameter ~print : String ->[IO] Unit
+let ~print = printStr
+
+let printLn () = printStrLn ""
+
+method toString (Loc {line, file}) = "\{file}:\{line}"
+
+let printLogInfo (LogInfo {loc, logType, msg}) =
+  match logType with
+  | LT_Log    => printStrLn "[ LOGS ] \{loc} \{msg.unwrapOr "Log"}"
+  | LT_Accept => printStrLn "[ACCEPT] \{loc} \{msg.unwrapOr "Test have been accepted"}"
+  | LT_Assert => printStrLn "[ASSERT] \{loc} \{msg.unwrapOr "Assertion failed"}"
+  | LT_Expect => printStrLn "[EXPECT] \{loc} \{msg.unwrapOr "Expectation failed"}"
+  end
+
+let printLogs (TestLog {logIdx, prefix}) =
+  printStrLn "\{logIdx.unwrapOr 0}"
+
+let printTestSuccess {~print} (name : String) (idx : Option Int) =
+  match idx with
+  | None     => ~print "\{Font.setFgColor Font.Green}✔\{Font.resetAll} "
+  | Some idx => ~print "\{Font.setFgColor Font.Green}\{idx})\{Font.resetAll} "
+  end;
+  printStrLn "\"\{name}\""
+
+let printTestFailure {~print} (name : String) (idx : Option Int) =
+  match idx with
+  | None     => ~print "\{Font.setFgColor Font.Red}✖\{Font.resetAll} "
+  | Some idx => ~print "\{Font.setFgColor Font.Red}\{idx})\{Font.resetAll} "
+  end;
+  printStrLn " \"\{name}\"";
+  ()
+
+{# Printing for suites #}
+let printSuiteName {~print} (TestSuite {name}) =
+  ~print name; printLn ()
+
+let printTestHeader () =
+  printStrLn "Running Tests ...";
+  printLn ()
+
+let printSummary (success : Int) (failed : Int) =
+  printStrLn "Results: \{success}/\{success + failed}";
+  if failed == 0 then printStrLn "OK" else ()
+
+{# ========================================================================= #}
+{# Running Test Logic #}
+
+{##
+  Test case effector object.
+  Provides two functionalities:
+  - allows for reporting assertion failure, which ends test immediately
+  - allows for reporting expectation failure, which allows for the test
+    to continue, but at the end test fails anyway. 
+##}
+data TestArbiter E = {log : LogInfo ->[E] Unit}
+
+let testArbiterHandler =
+  handler TestArbiter
+    { log = effect log / r => fn (logs, st) =>
+      match (log : LogInfo).logType with
+      | LT_Accept => (log :: logs, TR_Accept)
+      | LT_Log    => r () (log :: logs, st)
+      | LT_Assert => (log :: logs, TR_Fail)
+      | LT_Expect => r () (log :: logs, TR_Fail)
+      end
+    }
+    return x => fn (logs, st) => (logs, st)
+    finally c => c ([], TR_Accept)
+  end
+
+data MainRunner E =
+  { reportSuccess : TestLog ->[E] Option Int
+  , reportFail    : TestLog ->[E] Option Int }
+
+parameter ~runner : MainRunner _
+
+let mainRunnerHandler =
+  handler MainRunner
+    { reportSuccess = effect _ / r   => fn (succ, fail, logs) =>
+      r None (succ + 1, fail, logs)
+    , reportFail    = effect log / r => fn (succ, fail, logs) =>
+      let TestLog {test, prefix, logs=log', result} = log in
+      let log' = TestLog {test, prefix, logs=log', result, logIdx=Some (fail + 1)} in
+      r (Some (fail + 1)) (succ, fail + 1, log' :: logs) }
+    return _ => fn s => s
+    finally c => c (0, 0, [])
+  end
+
+{##
+  Runs the test
+  Returns True if the test passed, False otherwise
+##}
+let runTest {~print, ~prefix = prefix} (test : TestCase) =
+  let (logs, result) = test.body () in
+  let logs = TestLog {test, prefix, logIdx=None, logs, result} in
+  match result with
+  | TR_Accept =>
+    let idx = ~runner.reportSuccess logs in
+    printTestSuccess test.name idx
+  | TR_Fail   =>
+    let idx = ~runner.reportFail logs in
+    printTestFailure test.name idx
+  end
+
+let rec runSuite {~print, ~prefix} (suite : TestSuite) =
+  printSuiteName suite;
+  let ~print s = ~print ("  " + s)
+  let ~prefix = suite.name :: ~prefix in
+  List.iter runTest suite.tests.get;
+  List.iter runSuite suite.suites.get
+
+let suites = ioMut.ref ([] : List TestSuite)
+
+let addSuite s = suites.set (s :: suites.get)
+
+let runAllSuites () =
+  let ~print = printStr in
+  let ~prefix = [] in
+  let (succ, err, logs) =
+    handle ~runner with mainRunnerHandler in
+      List.iter runSuite suites.get in
+  List.iter printLogs logs;
+  printSummary succ err
+
+pub let run = runAllSuites
+
+method addTest (TestSuite {tests}) tc =
+  tests := tc :: tests.get
+
+method addSuite (TestSuite {suites}) suite =
+  suites := suite :: suites.get
+
+let constructTest {~__line__, ~__file__} name 
+    (f : {E, ~testArbiter : TestArbiter E} ->
+      Unit ->[E, IO] Unit) =
+  let body () =
+    handle ~testArbiter / F with testArbiterHandler in
+    f ()
+  in TestCase {name, loc = mkLoc, body}
+
+pub method addTest {~__line__, ~__file__}
+    (suite : TestSuite) testName
+    (f : {E, ~testArbiter : TestArbiter E} ->
+      Unit ->[E, IO] Unit) =
+  suite.addTest (constructTest testName f)
+
+pub let createTestSuite {~__line__, ~__file__} name =
+  let suites = ioMut.ref []
+  let tests = ioMut.ref []
+  let suite = TestSuite {name, loc = mkLoc, tests, suites} in
+  addSuite suite;
+  suite
+
+pub method addSuite
+    {~__line__, ~__file__}
+    (suite : TestSuite) name =
+  let suites = ioMut.ref []
+  let tests = ioMut.ref [] in
+  let suite' = TestSuite {name, loc = mkLoc, tests, suites} in
+  suite.addSuite suite';
+  suite'
+
+
+{##
+  Asserts that given value is True.
+ ##}
+pub let assertTrue
+    {~__line__, ~__file__, ~testArbiter : TestArbiter _, ?msg : String}
+    cond =
+  if cond then
+    ()
+  else
+    ~testArbiter.log
+      (LogInfo {loc = mkLoc, logType = LT_Assert
+        , msg = Some (msg.unwrapOr "Assertion Failed: Expected to be true")})
+
+{##
+  Asserts that 2 values are equal, according to first value's `equal` method.
+ ##}
+pub let assertEq 
+    { ~__line__
+    , ~__file__
+    , ~testArbiter : TestArbiter _
+    , ?msg : String
+    , X : type
+    , Y : type
+    , method equal : X ->> Y ->> Bool } 
+    (expected : X) (actual : Y) =
+  assertTrue
+    {msg = "Assertion Failed: Expected values to be equal"}
+    (expected.equal actual)
+
+{##
+  Asserts that 2 values are equal, according to first value's `equal` method.
+  Default error message is generated using format methods.
+ ##}
+pub let assertEqF
+    { ~__line__
+    , ~__file__
+    , ~testArbiter : TestArbiter _
+    , ?msg : String
+    , X : type
+    , Y : type
+    , method toString : X ->> String
+    , method toString : Y ->> String
+    , method equal : X ->> Y ->> Bool } 
+    (expected : X) (actual : Y) =
+  assertTrue
+    {msg =
+      "Assertion Failed: Expected\n\t\{expected}\n\t\{actual}\nto be equal"}
+    (expected.equal actual)
+
+let callsOnError (f : {E, ~onError : _ ->[E] _} -> Unit ->[E] _) =
+  handle
+    ~onError = effect _ => True
+    return _ => False
+  in f ()
+
+
+

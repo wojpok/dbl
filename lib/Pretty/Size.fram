@@ -20,14 +20,14 @@ pub data rec SList =
   | SShift of {width : Int, dangle : Int}, SList
   | SLast  of {width : Int}, SList
 
-method rec toString {?prec : Int, ?fmt : Unit} (self : SList) =
+pub method rec toString {?prec : Int, ?fmt : Unit} (self : SList) =
    match self with
   | SFix {width} => "SF {width=\{width}}"
   | SShift {width, dangle} tl => "SS {width=\{width}, dangle=\{dangle}} (\{tl})"
   | SLast {width} tl => "SL {width=\{width}} (\{tl})"
   end
 
-method rec equal (s1 : SList) (s2 : SList) =
+pub method rec equal (s1 : SList) (s2 : SList) =
   match (s1, s2) with
   | SFix {width=w1}, SFix {width=w2} => w1 == w2
   | SShift {width=w1, dangle=d1} s1, SShift {width=w2, dangle=d2} s2 =>
@@ -49,7 +49,7 @@ pub data Size =
 pub method toString (self : Size) =
   "Size {width = \{self.width}, height = \{self.height}}"
 
-method equal (w1 : Size) (w2 : Size) =
+pub method equal (w1 : Size) (w2 : Size) =
   w1.width == w2.width && w1.height == w2.height
 
 {## Constructs Size object for a singular string ##}

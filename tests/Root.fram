@@ -1,0 +1,4 @@
+import Pretty/Root
+import /Test
+
+let _ = Test.run ()
