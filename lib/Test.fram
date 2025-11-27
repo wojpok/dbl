@@ -64,22 +64,26 @@ let printLogInfo (LogInfo {loc, logType, msg}) =
   | LT_Expect => printStrLn "[EXPECT] \{loc} \{msg.unwrapOr "Expectation failed"}"
   end
 
-let printLogs (TestLog {logIdx, prefix}) =
-  printStrLn "\{logIdx.unwrapOr 0}"
+let printLogs (TestLog {logIdx, prefix, test, logs}) =
+  printStr "\{logIdx.unwrapOr 0}) ";
+  List.iter (fn s => printStr (s + "/")) (List.rev prefix);
+  printStrLn test.name;
+  List.iter printLogInfo (List.rev logs);
+  printLn ()
 
 let printTestSuccess {~print} (name : String) (idx : Option Int) =
   match idx with
   | None     => ~print "\{Font.setFgColor Font.Green}✔\{Font.resetAll} "
   | Some idx => ~print "\{Font.setFgColor Font.Green}\{idx})\{Font.resetAll} "
   end;
-  printStrLn "\"\{name}\""
+  printStrLn name
 
 let printTestFailure {~print} (name : String) (idx : Option Int) =
   match idx with
   | None     => ~print "\{Font.setFgColor Font.Red}✖\{Font.resetAll} "
   | Some idx => ~print "\{Font.setFgColor Font.Red}\{idx})\{Font.resetAll} "
   end;
-  printStrLn " \"\{name}\"";
+  printStrLn name;
   ()
 
 {# Printing for suites #}
@@ -158,8 +162,8 @@ let rec runSuite {~print, ~prefix} (suite : TestSuite) =
   printSuiteName suite;
   let ~print s = ~print ("  " + s)
   let ~prefix = suite.name :: ~prefix in
-  List.iter runTest suite.tests.get;
-  List.iter runSuite suite.suites.get
+  List.iter runTest (List.rev suite.tests.get);
+  List.iter runSuite (List.rev suite.suites.get)
 
 let suites = ioMut.ref ([] : List TestSuite)
 
@@ -170,8 +174,9 @@ let runAllSuites () =
   let ~prefix = [] in
   let (succ, err, logs) =
     handle ~runner with mainRunnerHandler in
-      List.iter runSuite suites.get in
-  List.iter printLogs logs;
+      List.iter runSuite (List.rev suites.get) in
+  printLn ();
+  List.iter printLogs (List.rev logs);
   printSummary succ err
 
 pub let run = runAllSuites
@@ -184,7 +189,7 @@ method addSuite (TestSuite {suites}) suite =
 
 let constructTest {~__line__, ~__file__} name 
     (f : {E, ~testArbiter : TestArbiter E} ->
-      Unit ->[E, IO] Unit) =
+      Unit ->[E] Unit) =
   let body () =
     handle ~testArbiter / F with testArbiterHandler in
     f ()
@@ -193,7 +198,7 @@ let constructTest {~__line__, ~__file__} name
 pub method addTest {~__line__, ~__file__}
     (suite : TestSuite) testName
     (f : {E, ~testArbiter : TestArbiter E} ->
-      Unit ->[E, IO] Unit) =
+      Unit ->[E] Unit) =
   suite.addTest (constructTest testName f)
 
 pub let createTestSuite {~__line__, ~__file__} name =
@@ -268,5 +273,18 @@ let callsOnError (f : {E, ~onError : _ ->[E] _} -> Unit ->[E] _) =
     return _ => False
   in f ()
 
+pub let log {~__line__, ~__file__, ~testArbiter : TestArbiter _} (msg : String) =
+  ~testArbiter.log (LogInfo {loc = mkLoc, logType = LT_Log, msg = Some msg})
 
+pub let createSuiteF {~__line__, ~__file__} (name : String)
+  (f : {~suite : TestSuite} -> Unit ->[IO] Unit) =
+  let ~suite = createTestSuite name in
+  f ()
 
+pub let withSuiteF {~__line__, ~__file__, ~suite : TestSuite} (name : String)
+  (f : {~suite : TestSuite} -> Unit ->[IO] Unit) =
+  let ~suite = ~suite.addSuite name in
+  f ()
+
+pub let testCaseF {~__line__, ~__file__, ~suite : TestSuite} =
+  ~suite.addTest
