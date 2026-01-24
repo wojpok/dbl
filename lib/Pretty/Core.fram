@@ -132,9 +132,8 @@ let discardInvalid (w : Int) =
 let (>>=) (xs : Stream.Stream _) f = Stream.concatMap f xs
 
 pub method combine (ODoc xs) (ODoc ys) = ODoc (fn w =>
-  let ds = xs w >>= (fn x =>
-    Stream.singleton (discardInvalid w (ys w >>= (fn y =>
-      Stream.singleton (x <> y)))))
+  let ds = xs w >.map (fn x =>
+    (discardInvalid w (ys w >.map (fn y => (x <> y)))))
   in
   bestOn
     (fn x y => ord (fst x) (fst y))
@@ -145,6 +144,7 @@ pub let groupingBy (sep : String) (ms : List (Pair Int ODoc)) =
   match ms with
   | [] => emptyDoc
   | ms => ODoc (fn w =>
+    let sep = textLayout sep in
     let (mws : List (Pair Int (Stream.Stream Layout)))
       = List.map (fn (x, ODoc d) => (x, d w)) ms in
     let (init, (_, last)) = List.dropTakeLast mws >.unwrapErr in
@@ -156,7 +156,7 @@ pub let groupingBy (sep : String) (ms : List (Pair Int ODoc)) =
       (List.foldRight1
         (fn xs ys => xs >>= (fn x =>
                      ys >>= (fn y =>
-                     Stream.singleton (x <> textLayout sep <> y))))
+                     Stream.singleton (x <> sep <> y))))
         hcat).unwrapErr in
     let ver =
       List.foldRight1
@@ -164,9 +164,8 @@ pub let groupingBy (sep : String) (ms : List (Pair Int ODoc)) =
           bestOn 
             (fn x y => ord (fst x) (fst y))
             (fn x y => poset (fst x) (fst y))
-            (xs >>= (fn x =>
-            Stream.singleton (ys >>= (fn y =>
-               Stream.singleton (x $$ y))))))
+            ((xs : Stream.Stream _).map (fn x =>
+              ys.map (fn y => (x $$ y)))))
         vcat >.unwrapErr
     let ls = bestOn
       (fn x y => ord (fst x) (fst y))

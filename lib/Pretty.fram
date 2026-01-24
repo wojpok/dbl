@@ -22,7 +22,7 @@ import Pretty/Style
   Documents may be joined 3 different ways:
     - d1 <> d2 - Joins document d2 to the last line of d1
     - d1 $$ d2 - Puts d2 on the next line, right after d1
-    - d1 >+> d2 - Puts d2 next to d1 - true veritial catenation
+    - d1 >+> d2 - Puts d2 next to d1 - true horizontal catenation
   The last one comes with some limitation but this will be explained later.
 
   Library also introduces non local alignments. Imagine aligning `=` operator
@@ -191,7 +191,7 @@ pub let (semibraced : List Doc ->[] Doc) =
 pub let (<+>) d1 d2 = d1 <> text " " <> d2
 
 {## Puts d2 right after d1 or in next line ##}
-pub let (</>) d1 d2 = hang 0 d1 d2
+pub let (</>) d1 d2 = hangWith 0 d1 d2
 
 {## Enclosing of a document. ##}
 pub let enclose l r d = l <> r <> d
