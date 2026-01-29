@@ -4,6 +4,7 @@ import /List
 import /Lazy
 import /Stream
 import Style
+import /String
 
 let ~onError () = runtimeError "PrettyPrinter - internal error"
 
@@ -38,14 +39,57 @@ method seq (l1 : Layout) (l2 : Layout) =
 
 method style ((x, y) : Layout) (sty : Style.Style) = (x, y.style sty)
 
-pub data ODoc = ODoc of (Int ->[] Stream.Stream Layout)
+parameter EY : effect
+parameter ~yield : Layout ->[EY] Unit
+
+let topYieldH =
+  handler
+    effect yield x => x
+    return () => ~onError ()
+  end
+
+data rec Gen = Gen of (Unit ->[] Option (Pair Layout Gen))
+let ungen (Gen f) = f
+let emptyGen = Gen (fn _ => None)
+let runGen g = ungen g ()
+let cons x g = Gen (fn _ => Some (x, g))
+let lazyCons (x : Layout) (f : Unit ->[] Gen) =
+  Gen (fn _ => Some (x, Gen (fn _ => ungen (f ()) ())))
+
+let genYieldH =
+  handler
+    effect x / r => lazyCons x r
+    return () => emptyGen
+  end
+
+let rec genTakeWhile f xs =
+  handle ~yield with genYieldH in
+    let rec iter gen =
+    match runGen gen with
+    | Some (x, xs) =>
+      if f x then
+        (~yield x; iter gen)
+    | None => ()
+    end
+  in
+  iter xs
+
+let runGenH f x = handle ~yield / EY with genYieldH in f x
+
+pub data ODoc = ODoc of ({E, ~yield : Layout ->[E] Unit} -> Int ->[E] Unit)
+
+let rec yieldFromGen g =
+  match runGen g with
+  | Some (x, g) => ~yield x; yieldFromGen g
+  | None => ()
+  end
 
 pub let text str = ODoc (fn _ =>
-  Stream.singleton (textSize str, textLines str))
+  ~yield (textSize str, textLines str))
 pub let emptyDoc = text ""
 
 let textLayout str = (textSize str, textLines str)
-let spaces n = textLayout (replicate " " n)
+let spaces n = textLayout (" " ** n)
 
 pub let (<>) {X, method combine : X -> X ->[] X} (x : X) = x.combine
 pub let ($$)
@@ -56,84 +100,112 @@ pub let ($$)
   x.flush.combine
 
 pub let paretoSelector
-  {X : type}
-  (poset : X -> X ->[] Bool)
-  (seq : Stream.Stream X) = 
-    let rec iter (mins : List X) (seq : Stream.Stream X) () =
-      match seq.uncons with
-      | None => Stream.empty
+  (poset : Layout -> Layout ->[] Bool)
+  (seq : Gen) = 
+    let rec iter (mins : List Layout) (seq : Gen)=
+      match runGen seq with
+      | None => ()
       | Some (x, seq) =>
         match List.findIndex (fn y => poset y x) mins with
-        | Some _ => iter mins seq ()
-        | None => Stream.cons x (Stream.lazyStream ((iter (x :: mins) seq)))
+        | Some _ => iter mins seq
+        | None => ~yield x; (iter (x :: mins) seq)
         end
       end in
-    Stream.lazyStream (iter [] seq)
+    iter [] seq
 
-pub let rec mergeOn
-  sel
-  (xs : Stream.Stream _)
-  (ys : Stream.Stream _) = Stream.lazyStream (fn _ =>
-    match xs.uncons with
-    | None => ys
-    | Some(x, xs') => match ys.uncons with
-      | None => xs
-      | Some (y, ys') =>
+pub let rec mergeOn {~yield : Layout ->> Unit} sel (xs : Gen) (ys : Gen) =
+  rec
+    let leftMerge x xs ys =
+      match runGen ys with
+      | None => ~yield x; yieldFromGen xs
+      | Some (y, ys) =>
         if sel x y then
-          Stream.cons x (mergeOn sel xs' ys)
+          (~yield x; rightMerge xs y ys)
         else
-          Stream.cons y (mergeOn sel xs ys')
+          (~yield y; leftMerge x xs ys)
       end
-    end)
+    let rightMerge xs y ys =
+      match runGen xs with
+      | None => ~yield y; yieldFromGen ys
+      | Some (x, xs) =>
+        if sel x y then
+          (~yield x; rightMerge xs y ys)
+        else
+          (~yield y; leftMerge x xs ys)
+      end
+  end
+  in
+  match (runGen xs, runGen ys) with
+  | None, None => ()
+  | Some (x, xs), None => ~yield x; yieldFromGen xs
+  | None, Some (y, ys) => ~yield y; yieldFromGen ys
+  | Some (x, xs), Some (y, ys) =>
+    if sel x y then
+      (~yield x; rightMerge xs y ys)
+    else
+      (~yield y; leftMerge x xs ys)
+  end
 
-pub let rec mergeAllOn sel (xss : Stream.Stream (Stream.Stream _)) =
-  Stream.lazyStream (fn _ =>
-    match xss.uncons with
-    | None => Stream.empty
-    | Some (x, ys) => mergeOn sel x (mergeAllOn sel ys)
-    end)
+pub let rec mergeAllOn sel (xss : List Gen) =
+  match xss with
+  | [x] => x
+  | []  => emptyGen
+  | x :: xs =>
+    handle ~yield / EY with genYieldH in
+      mergeOn sel x (mergeAllOn sel xs)
+  end 
 
 pub let bestOn ord poset xss =
   paretoSelector poset (mergeAllOn ord xss)
 
-let maxWidth (w : Size) =
-  match w.reset with
-  | Size {width=SLast (SFix {width})} => width
-  | _ => impossible ()
-  end
+let maxWidth (w : Size) = w.comp.force.snd
 
 # assumes non-empty input and returns non empty output
 pub let quasifilter
-    {X}
-    (pred : X ->[] Bool)
-    (ord : X -> X ->[] Bool) (ws : Stream.Stream X) =
-  Stream.lazyStream (fn _ =>
-    match ws.uncons with
-    | None => Stream.empty
-    | Some (x, xs') =>
-      if Stream.isEmpty xs' then
-        Stream.singleton x
+    (pred : Layout ->[] Bool)
+    (ord : Layout -> Layout ->[] Bool)
+    (gen : Gen) =
+  let rec iter gen xs yielded =
+    match runGen gen with
+    | Some (x, gen) =>
+      if pred x then
+        (~yield x; iter gen [] True)
       else
-       (let fted = Stream.filter pred ws in
-        match fted >.uncons with
-        | None =>
-          let el = Stream.foldRight1Err
-            (fn x y => if ord x y then x else y) ws in
-          Stream.singleton el
-        | Some _ => fted
-        end)
-    end)
+        iter gen xs yielded
+    | None =>
+      if not yielded then
+        ~yield (List.foldRight1Err
+            (fn x y => if ord x y then x else y) xs)
+    end
+  in
+  iter gen [] False
 
 let discardInvalid (w : Int) =
   quasifilter
     (fn s => maxWidth (fst s) <= w)
     (fn x y => maxWidth (fst x) <= maxWidth (fst y))
 
-let (>>=) (xs : Stream.Stream _) f = Stream.concatMap f xs
-
 pub method combine (ODoc xs) (ODoc ys) = ODoc (fn w =>
-  let ds = xs w >.map (fn x =>
-    (discardInvalid w (ys w >.map (fn y => (x <> y)))))
+  # let ds = xs w >.map (fn x =>
+  #   (discardInvalid w (ys w >.map (fn y => (x <> y)))))
+  # in
+  let ys =
+    handle
+      ~yield = effect x / r => Stream.cons x (Stream.lazyStream r)
+      return () => Stream.empty
+    in
+    ys w
+  let xs = 
+    handle
+      ~yield = effect x / r => x :: r ()
+      return () => []
+    in
+    xs w
+  let ds = xs.map (fn x =>
+    (handle ~yield / EY with genYieldH in
+      discardInvalid w
+      (handle ~yield / EY with genYieldH in
+          (ys.iter (fn y => ~yield (x <> y))))))
   in
   bestOn
     (fn x y => ord (fst x) (fst y))
@@ -145,11 +217,14 @@ pub let groupingBy (sep : String) (ms : List (Pair Int ODoc)) =
   | [] => emptyDoc
   | ms => ODoc (fn w =>
     let sep = textLayout sep in
-    let (mws : List (Pair Int (Stream.Stream Layout)))
-      = List.map (fn (x, ODoc d) => (x, d w)) ms in
+    let (mws : List (Pair Int Gen))
+      = List.map (fn (x, ODoc d) => (x, runGenH d w)) ms in
     let (init, (_, last)) = List.dropTakeLast mws >.unwrapErr in
-    let (hcat : List (Stream.Stream Layout))
-      = List.map (fn x => onlySingleLine (snd x)) init + [last] in
+    let (hcat : List (Gen))
+      = List.map
+          (fn x => genTakeWhile (fn l => l.fst.height == 0)
+          (snd x)) init 
+        + [last] in
     let (vcat : List (Stream.Stream Layout))
       = List.map (fn (i, x) => Stream.map (fn x => spaces i <> x) x) mws in
     let hor = discardInvalid w
@@ -208,16 +283,4 @@ pub let generate {?width : Int} (ODoc xs) =
   end
 
 pub let generateDebug width (ODoc xs) =
-  let rec iter (xs : Stream.Stream Layout) =
-    match xs.uncons with
-    | None => ()
-    | Some (layout, tail) =>
-      let layout = layout.reset in
-      let (size, lines) = layout in
-      printStrLn size.toString;
-      printStrLn "";
-      printStrLn (debugLines lines.force);
-      printStrLn (unlines width lines.force);
-      iter tail
-    end in
-  iter (xs width)
+  runtimeError "DEL"

@@ -191,6 +191,12 @@ pub let equal
     in
     equalAux xs ys
 
+pub method rec iter (xs : Stream _) f =
+  match xs.unstream.force with
+  | Cons x xs => f x; xs.iter f
+  | Nil => ()
+  end
+
 {## Enables stream showing in REPL. ##}
 pub let show (_ : Stream X) = "#Stream"
 
