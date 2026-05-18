@@ -16,7 +16,7 @@ import /List
  ##}
 
 # Handles parenthesis insertion
-let addParenths
+let addParen
     (str : String)
     (precedence : Int)
     (parent : Option Int)
@@ -50,7 +50,8 @@ let padding
       []
     else
       fill :: padding (df - 1)
-  let padding = charListToStr (padding df) in
+  let padding = charListToStr (padding df)
+  in
   if alignLeft then
     str + padding
   else
@@ -89,7 +90,8 @@ pub data UnitFmt =
  ##}
 pub method toString {?prec : Int, ?fmt : UnitFmt} () =
   let UnitFmt {unit, size, fill, alignLeft} = fmt.unwrapOr UnitFmt in
-  let ctor = unit.unwrapOr "()" in
+  let ctor = unit.unwrapOr "()"
+  in
   padding ctor size fill alignLeft
 
 ## # Int
@@ -114,8 +116,8 @@ pub data IntFmt =
             , ?parenths : Bool }
 
 pub method toString {?prec : Int, ?fmt : IntFmt} (self : Int) =
-  let IntFmt {base, prefix, parenths} = fmt.unwrapOr IntFmt
-  let IntFmt {size, fill, alignLeft}  = fmt.unwrapOr IntFmt
+  let IntFmt {base, prefix, parenthsi, size, fill, alignLeft} =
+    fmt.unwrapOr IntFmt
   let base = base.unwrapOr 10
   let prefix = prefix.unwrapOr ""
   let _ = assert {msg="Int base out of bounds"} (2 <= base && base <= 36)
@@ -142,7 +144,7 @@ pub method toString {?prec : Int, ?fmt : IntFmt} (self : Int) =
   # final result
   let num = prefix + charListToStr (iter self [])
   let parenths = Some (neg && (parenths.unwrapOr True))
-  let num = addParenths num 150 prec parenths in
+  let num = addParen num 150 prec parenths in
   padding num size fill alignLeft
 
 ## # Int64
@@ -169,8 +171,8 @@ pub data Int64Fmt =
               , ?parenths : Bool }
 
 pub method toString {?prec : Int, ?fmt : Int64Fmt} (self : Int64) =
-  let Int64Fmt {base, prefix, parenths, suffix} = fmt.unwrapOr Int64Fmt
-  let Int64Fmt {size, fill, alignLeft}          = fmt.unwrapOr Int64Fmt
+  let Int64Fmt {base, prefix, parenths, suffix, size, fill, alignLeft} =
+    fmt.unwrapOr Int64Fmt
   let base = base.unwrapOr 10
   let prefix = prefix.unwrapOr ""
   let suffix = suffix.unwrapOr "L"
@@ -194,11 +196,12 @@ pub method toString {?prec : Int, ?fmt : Int64Fmt} (self : Int64) =
           chr ('0'.code + digit.toInt.unwrap)
         else 
           chr ('A'.code + digit.toInt.unwrap - 10)
-      in iter shift (c :: acc))
+      in
+      iter shift (c :: acc))
   # final result
   let num = prefix + charListToStr (iter self []) + suffix
   let parenths = Some (neg && (parenths.unwrapOr True))
-  let num = addParenths num 150 prec parenths in
+  let num = addParen num 150 prec parenths in
   padding num size fill alignLeft
 
 ## ## Char
@@ -254,14 +257,13 @@ pub let charRepr (x : Char) =
   @param ?fmt Format arguments.
  ##}
 pub method toString {?prec : Int, ?fmt : CharFmt} (self : Char) =
-  let CharFmt {escape, asInt}         = fmt.unwrapOr CharFmt
-  let CharFmt {size, fill, alignLeft} = fmt.unwrapOr CharFmt in
+  let CharFmt {escape, asInt, size, fill, alignLeft} = fmt.unwrapOr CharFmt in
   match asInt with
     | Some fmt => self.code.toString {prec=prec.unwrapOr 0, fmt}
     | None =>
       let res = 
         if escape.unwrapOr True == False then
-          self.unescaped
+          self.toString
         else
          (let escape = charRepr self in
           "'" + escape + "'")
@@ -326,8 +328,7 @@ pub data BoolFmt =
   @param ?fmt Bool toString options.
  ##}
 pub method toString {?prec : Int, ?fmt : BoolFmt} (self : Bool) =
-  let BoolFmt {true, false}           = fmt.unwrapOr BoolFmt 
-  let BoolFmt {size, fill, alignLeft} = fmt.unwrapOr BoolFmt
+  let BoolFmt {true, false, size, fill, alignLeft} = fmt.unwrapOr BoolFmt
   let ctor = 
     if self then 
       true.unwrapOr "True"
@@ -366,8 +367,8 @@ pub data ListFmt A =
  ##}
 pub method toString
     {?prec : Int, ?fmt : ListFmt XFmt } (self : List X) =
-  let ListFmt {opn, sep, cls, inner}  = fmt.unwrapOr ListFmt
-  let ListFmt {size, fill, alignLeft} = fmt.unwrapOr ListFmt
+  let ListFmt {opn, sep, cls, inner, size, fill, alignLeft} =
+    fmt.unwrapOr ListFmt
   let opn = opn.unwrapOr "["
   let sep = sep.unwrapOr ", "
   let cls = cls.unwrapOr "]"
@@ -417,8 +418,8 @@ pub data OptionFmt A =
  ##}
 pub method toString
     {?prec : Int, ?fmt : OptionFmt XFmt } (self : Option X) =
-  let OptionFmt {some, none, inner, parenths} = fmt.unwrapOr OptionFmt
-  let OptionFmt {size, fill, alignLeft}       = fmt.unwrapOr OptionFmt
+  let OptionFmt {some, none, inner, parenths, size, fill, alignLeft} =
+    fmt.unwrapOr OptionFmt
   let appInner (x : X) =
     match inner with
     | Some fmt => x.toString {prec=200, fmt}
@@ -429,7 +430,7 @@ pub method toString
     | None => none.unwrapOr "None"
     | Some x => 
       let str = some.unwrapOr "Some " + appInner x in
-      addParenths str 200 prec parenths
+      addParen str 200 prec parenths
     end in
   padding str size fill alignLeft
 
@@ -467,10 +468,8 @@ pub data PairFmt A B =
 pub method toString
     {?fmt : PairFmt XFmt YFmt, ?prec : Int }
     ((v1, v2) : Pair X Y) =
-  let PairFmt {opn, sep, cls}         = fmt.unwrapOr PairFmt
-  let PairFmt {fst, snd}              = fmt.unwrapOr PairFmt
-  let PairFmt {size, fill, alignLeft} = fmt.unwrapOr PairFmt
-  
+  let PairFmt {opn, sep, cls, fst, snd, size, fill, alignLeft} =
+    fmt.unwrapOr PairFmt
   let fst = match fst with 
             | Some fmt => v1.toString {fmt} 
             | None     => v1.toString 
@@ -483,7 +482,8 @@ pub method toString
   let opn = opn.unwrapOr "("
   let sep = sep.unwrapOr ", "
   let cls = cls.unwrapOr ")"
-  let res = opn + fst + sep + snd + cls in
+  let res = opn + fst + sep + snd + cls
+  in
   padding res size fill alignLeft
 
 {# Either #}
@@ -538,7 +538,7 @@ pub method toString
       | None     => right + y.toString {prec=200}
       end
     end
-  let res = addParenths res 200 prec parenths in
+  let res = addParen res 200 prec parenths in
   padding res size fill alignLeft
 
 {# Result #}
@@ -593,6 +593,6 @@ pub method toString
       | None     => err + y.toString {prec=200}
       end
     end
-  let res = addParenths res 200 prec parenths in
+  let res = addParen res 200 prec parenths in
   padding res size fill alignLeft
 
