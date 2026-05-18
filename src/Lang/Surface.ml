@@ -85,6 +85,9 @@ and type_expr_data =
   | TEffect of type_expr list
     (** Effect: list of simple effects *)
 
+  | TEffProj of EffectMode.t * type_expr
+    (** Projection of an effect to a given mode *)
+
   | TPureArrow of scheme_expr * type_expr
     (** Pure function: a function without effects that always terminates *)
 
@@ -266,16 +269,27 @@ and expr_data =
     (** First-class handler, with return and finally clauses. For each of these
       clause lists, empty list means the default identity clause *)
 
-  | EEffect of expr option * pattern * expr
-    (** Effectful operation. The only argument is a continuation. Other
-      arguments should be bound using regular lambda abstractions ([EFn]).
-      The first parameter is an optional label. *)
+  | EHandlerFn of def list * expr * match_clause list * match_clause list
+    (** First-class handler defined on top of a block of definitions. In
+      contrast to [EHandler], this handler does not create a fresh label. *)
+
+  | EEffect of expr option * EffectMode.t * pattern * expr
+    (** Effectful operation. The only argument (bound by the pattern) is a
+      continuation. Other arguments should be bound using regular lambda
+      abstractions ([EFn]). The first parameter is an optional label. *)
 
   | EExtern of string
     (** Externally defined value *)
 
   | EAnnot of expr * type_expr
     (** Type annotation *)
+
+  | EAnnotEff of expr * type_expr * type_expr
+    (** Expression explicitly annotated with a type (second parameter) and an
+      effect (third parameter) *)
+
+  | EAnnotTotal of expr * type_expr
+    (** Type annotation with totality guarantee *)
 
   | ERepl of def list Seq.t
     (** REPL. It is a lazy sequence of groups of definitions provided by a

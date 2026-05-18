@@ -81,8 +81,15 @@ type ('tp, 'e) field_data =
   | FldNameFn of name * 'e list * 'e 
     (** Explicit instantiation with a function *)
 
-  | FldNameEffectFn of name * 'e option * 'e list * 'e option * 'e
+  | FldNameEffectFn of
     (** Explicit instantiation with an effectful function *)
+    { name       : name;
+      label      : 'e option;
+      mode       : EffectMode.t;
+      args       : 'e list;
+      resumption : 'e option;
+      body       : 'e
+    }
 
   | FldNameAnnot of name * 'tp
     (** type-annotated implicit parameter *)
@@ -111,6 +118,9 @@ and type_expr_data =
   | TEffect of type_expr list
     (** Effect: list of simple effect *)
 
+  | TEffProj of EffectMode.t * type_expr
+    (** Projection of an effect to a given mode *)
+
   | TApp of type_expr * type_expr
     (** Type application *)
 
@@ -128,6 +138,14 @@ and ctor_decl = ctor_decl_data node
 and ctor_decl_data =
   | CtorDecl of ctor_name * type_expr list
     (** Declaration of a constructor *)
+
+(** Type annotation *)
+type type_annot =
+  | AnnotTotal of type_expr
+    (** Type annotation, requiring totality *)
+
+  | AnnotType of type_expr
+    (** Type annotation that may include effects *)
 
 (** Attributes *)
 type attribute = attribute_data node
@@ -191,8 +209,13 @@ and expr_data =
   | EHandler of expr * h_clause list
     (** First-class handler *)
 
+  | EHandlerFn of def list * expr * h_clause list
+    (** First-class handler defined on top of a block of definitions. In
+      contrast to [EHandler], this handler does not create a fresh label. *)
+
   | EEffect of
     { label      : expr option;
+      mode       : EffectMode.t;
       args       : expr list;
       resumption : expr option;
       body       : expr
@@ -212,7 +235,7 @@ and expr_data =
   | EExtern of string
     (** Externally defined value *)
 
-  | EAnnot of expr * type_expr
+  | EAnnot of expr * type_annot
     (** Type annotation *)
 
   | EIf of expr * expr * expr option
@@ -244,7 +267,7 @@ and field = (type_expr, expr) field_data node
 (** Definitions *)
 and def = (attribute list * def_data) node
 and def_data =
-  | DLet of expr * expr
+  | DLet of expr * type_annot option * expr
     (** Let-definition *)
 
   | DParam of field
@@ -268,7 +291,7 @@ and def_data =
   | DHandleWith of expr * type_expr option * expr
     (** Effect handler, with first-class handler *)
 
-  | DMethod of expr * expr
+  | DMethod of expr * type_annot option * expr
     (** Method definition *)
 
   | DModule of module_name * def list

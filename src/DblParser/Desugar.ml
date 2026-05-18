@@ -51,8 +51,13 @@ let node_is_data_def (def : def) =
 
 let annot_tp e tp =
   { pos = e.pos;
-    data = Raw.EAnnot(e, with_nowhere tp)
+    data = Raw.EAnnot(e, AnnotType (with_nowhere tp))
   }
+
+let add_annot_opt e annot_opt =
+  match annot_opt with
+  | None -> e
+  | Some annot -> { e with data = Raw.EAnnot(e, annot) }
 
 let scheme_wildcard pos =
   { sch_pos  = pos;
@@ -129,6 +134,8 @@ let rec tr_type_expr (tp : Raw.type_expr) =
     end
   | TEffect tps ->
     make (TEffect (List.map tr_type_expr tps))
+  | TEffProj(mode, eff) ->
+    make (TEffProj(mode, tr_type_expr eff))
   | TApp(tp1, tp2) ->
     make (TApp(tr_type_expr tp1, tr_type_expr tp2))
   | TRecord _ | TTypeLbl _ ->
@@ -173,7 +180,7 @@ and tr_scheme_expr (tp : Raw.type_expr) =
       Error.fatal (Error.impure_scheme pos)
     end
 
-  | TWildcard | TVar _ | TArrow _ | TEffect _ | TApp _ ->
+  | TWildcard | TVar _ | TArrow _ | TEffect _ | TEffProj _ | TApp _ ->
     { sch_pos  = pos;
       sch_args = [];
       sch_body = tr_type_expr tp
@@ -208,8 +215,8 @@ and tr_type_var (tp : Raw.type_expr) =
   | TVar ({data = NPName x; _}, ka) ->
     let k = Option.value ka ~default:(make KWildcard) in
     (x, k)
-  | TVar ({data = NPSel _; _}, _) | TWildcard | TArrow _ | TEffect _ | TApp _
-  | TRecord _ | TTypeLbl _ ->
+  | TVar ({data = NPSel _; _}, _) | TWildcard | TArrow _ | TEffect _
+  | TEffProj _ | TApp _ | TRecord _ | TTypeLbl _ ->
     Error.fatal (Error.desugar_error tp.pos)
 
 (** Translate a type expression as a type parameter *)
@@ -234,7 +241,7 @@ let rec tr_named_type_arg (tp : Raw.type_expr) =
     make (TNVar x, make (TA_Var(x, k)))
   | TTypeLbl tp -> make (TNAnon, tr_type_arg tp)
   | TWildcard -> make (TNAnon, make (TA_Wildcard))
-  | TVar ({data = NPSel _; _}, _) | TArrow _ | TEffect _ | TApp _
+  | TVar ({data = NPSel _; _}, _) | TArrow _ | TEffect _ | TEffProj _ | TApp _
   | TRecord _ ->
     Error.fatal (Error.desugar_error tp.pos)
 
@@ -245,7 +252,7 @@ let rec tr_type_def (tp : Raw.type_expr) args =
   | TVar ({data = NPName x; _}, _) -> TD_Id(x, args)
   | TApp(tp1, tp2) -> tr_type_def tp1 (tp2 :: args)
   | TVar ({data = NPSel _; _}, _) | TWildcard | TParen _ | TArrow _
-  | TEffect _ | TRecord _ | TTypeLbl _ ->
+  | TEffect _ | TEffProj _ | TRecord _ | TTypeLbl _ ->
     Error.fatal (Error.desugar_error tp.pos)
 
 let tr_ctor_decl (d : Raw.ctor_decl) =
@@ -287,9 +294,10 @@ let rec tr_ctor_pattern (p : Raw.expr) =
   | ESelect(path, p) -> path_append path (tr_ctor_pattern p)
 
   | EWildcard | ENum _ | ENum64 _ | EStr _ | EChr _ | EParen _ | EVar _
-  | EImplicit _ | EFn _ | EApp _ | EDefs _ | EMatch _ | EHandler _ | EEffect _
-  | ERecord _ | EMethod _ | EExtern _ | EAnnot _ | EIf _ | EBOp _ | EUOp _
-  | EList (_ :: _) | EPub _ | EMethodCall _ | EInterp (_, _) ->
+  | EImplicit _ | EFn _ | EApp _ | EDefs _ | EMatch _ | EHandler _
+  | EHandlerFn _ | EEffect _ | ERecord _ | EMethod _ | EExtern _ | EAnnot _
+  | EIf _ | EBOp _ | EUOp _ | EList (_ :: _) | EPub _ | EMethodCall _
+  | EInterp (_, _) ->
     Error.fatal (Error.desugar_error p.pos)
 
 (** Translate a pattern *)
@@ -315,7 +323,8 @@ let rec tr_pattern (p : Raw.expr) =
     let named = List.map tr_named_pattern flds in
     let ps = List.map (tr_pattern) ps in
     make (PCtor(cpath, named, ps))
-  | EAnnot(p, sch) -> make (PAnnot(tr_pattern p, tr_scheme_expr sch))
+  | EAnnot(p, AnnotType sch) ->
+    make (PAnnot(tr_pattern p, tr_scheme_expr sch))
   | EBOp(p1, op, p2) ->
     let c_name = {op with data = NPName (tr_bop_id op)} in
     let ps = [tr_pattern p1; tr_pattern p2] in
@@ -335,8 +344,9 @@ let rec tr_pattern (p : Raw.expr) =
     make (List.fold_right cons ps pnil).data
   | EPub p -> make (Attributes.make_vis_pattern (tr_pattern p)).data
 
-  | EFn _ | EDefs _ | EMatch _ | EHandler _ | EEffect _ | ERecord _
-  | EMethod _ | EExtern _ | EIf _ | EMethodCall _  ->
+  | EFn _ | EDefs _ | EMatch _ | EHandler _ | EHandlerFn _ | EEffect _
+  | ERecord _ | EMethod _ | EExtern _ | EIf _ | EMethodCall _
+  | EAnnot(_, AnnotTotal _) ->
     Error.fatal (Error.desugar_error p.pos)
 
 (** Translate a pattern, separating out its annotation [Some sch] if present,
@@ -349,11 +359,14 @@ and tr_annot_pattern (p : Raw.expr) =
     | pat, None -> { pat with pos }, None
     | (_, Some _) as res -> res
     end
-  | EAnnot(p, sch) -> tr_pattern p, Some (tr_scheme_expr sch)
+  | EAnnot(p, AnnotType sch) -> tr_pattern p, Some (tr_scheme_expr sch)
+  | EAnnot(_, AnnotTotal _) ->
+    Error.fatal (Error.desugar_error pos)
   | EWildcard | EUnit | EVar _ | EBOpID _ | EUOpID _ | EImplicit _ | ECtor _
   | ENum _ | ENum64 _ | EStr _ |  EChr _ | EFn _ | EApp _ | EDefs _ | EMatch _
-  | EHandler _ | EEffect _ | ERecord _ | EMethod _ | EMethodCall _ | EExtern _
-  | EIf _ | ESelect _ | EBOp _ | EUOp _ | EList _ | EPub _ | EInterp (_, _) ->
+  | EHandler _ | EHandlerFn _ | EEffect _ | ERecord _ | EMethod _
+  | EMethodCall _ | EExtern _ | EIf _ | ESelect _ | EBOp _ | EUOp _ | EList _
+  | EPub _ | EInterp (_, _) ->
     tr_pattern p, None
 
 and tr_named_pattern (fld : Raw.field) =
@@ -424,8 +437,9 @@ let rec tr_let_pattern (p : Raw.expr) =
       LP_Pat(tr_pattern p)
 
     | EWildcard | EParen _ | EFn _ | EApp _ | EDefs _ 
-    | EMatch _ | EHandler _| EEffect _ | ERecord _ | EMethod _ 
-    | EExtern _ | EAnnot _ | EIf _ | EBOp _ | EUOp _ | EPub _ | EMethodCall _ ->
+    | EMatch _ | EHandler _ | EHandlerFn _ | EEffect _ | ERecord _ | EMethod _
+    | EExtern _ | EAnnot _ | EIf _ | EBOp _ | EUOp _ | EPub _
+    | EMethodCall _ ->
       Error.fatal (Error.desugar_error p1.pos)
     end
 
@@ -434,8 +448,8 @@ let rec tr_let_pattern (p : Raw.expr) =
   | EInterp (_, _) ->
     LP_Pat (tr_pattern p)
 
-  | EFn _ | EDefs _ | EMatch _ | EHandler _ | EEffect _ | ERecord _
-  | EMethod _ | EExtern _ | EIf _ | EMethodCall _  ->
+  | EFn _ | EDefs _ | EMatch _ | EHandler _ | EHandlerFn _ | EEffect _
+  | ERecord _ | EMethod _ | EExtern _ | EIf _ | EMethodCall _  ->
     Error.fatal (Error.desugar_error p.pos)
 
 (** Translate a function, given a list of formal parameters *)
@@ -484,14 +498,15 @@ let rec tr_poly_expr (e : Raw.expr) =
     
     | EWildcard | ENum _ | ENum64 _ | EStr _ | EChr _ | EParen _ | EFn _
     | EApp _ | EEffect _ | EDefs _ | EMatch _ | ERecord _ | EHandler _
-    | EExtern _ | EAnnot _ | EIf _ | EMethod _ | ESelect _ | EBOp _ | EUOp _
-    | EList (_ :: _) | EPub _ | EMethodCall _ | EInterp (_, _) ->
+    | EHandlerFn _ | EExtern _ | EAnnot _ | EIf _ | EMethod _ | ESelect _
+    | EBOp _ | EUOp _ | EList (_ :: _) | EPub _ | EMethodCall _
+    | EInterp (_, _) ->
       Error.fatal (Error.desugar_error e.pos)
     end
 
   | EWildcard | ENum _ | ENum64 _ | EStr _ | EChr _ | EParen _ | EFn _ | EApp _
-  | EEffect _ | EDefs _ | EMatch _ | ERecord _ | EHandler _ | EExtern _
-  | EAnnot _ | EIf _ | EBOp _ | EUOp _ | EList (_ :: _) | EPub _
+  | EEffect _ | EDefs _ | EMatch _ | ERecord _ | EHandler _ | EHandlerFn _
+  | EExtern _ | EAnnot _ | EIf _ | EBOp _ | EUOp _ | EList (_ :: _) | EPub _
   | EMethodCall _ | EInterp (_, _) ->
     Error.fatal (Error.desugar_error e.pos)
 
@@ -506,10 +521,22 @@ and tr_poly_expr_def (e : Raw.expr) =
     make (PE_Poly (tr_poly_expr e))
 
   | ENum _ | ENum64 _ | EStr _ | EChr _ | EApp _ | EMethodCall _ | EDefs _
-  | EMatch _ | EHandler _ | EEffect _ | EExtern _ | EAnnot _ | EIf _
-  | ESelect _ | EBOp _ | EUOp _ | EList _ | EWildcard | ERecord _ | EPub _ 
-  | EInterp (_, _) ->
+  | EMatch _ | EHandler _ | EHandlerFn _ | EEffect _ | EExtern _ | EAnnot _
+  | EIf _ | ESelect _ | EBOp _ | EUOp _ | EList _ | EWildcard | ERecord _
+  | EPub _ | EInterp (_, _) ->
     make (PE_Expr (tr_expr e))
+
+and tr_apply (e1 : Raw.expr) (es : Raw.expr list) =
+  match collect_fields ~ppos:e1.pos es with
+  | [], _, es -> tr_expr_app (tr_expr e1) es
+  | flds, fpos, es ->
+    let e1 = tr_poly_expr e1 in
+    let inst = List.map tr_explicit_inst flds in
+    let e1 =
+      { pos  = Position.join e1.pos fpos;
+        data = EPoly(e1, inst)
+      } in
+    tr_expr_app e1 es
 
 and tr_expr (e : Raw.expr) =
   let make data = { e with data = data } in
@@ -543,38 +570,38 @@ and tr_expr (e : Raw.expr) =
     in let annot = annot_tp expr RawTypes.string in 
     tr_expr annot
   | EFn(es, e)     -> make (tr_function es (tr_expr e)).data
-  | EApp(e1, es)   ->
-    begin match collect_fields ~ppos:e1.pos es with
-    | [], _, es -> tr_expr_app (tr_expr e1) es
-    | flds, fpos, es ->
-      let e1 = tr_poly_expr e1 in
-      let inst = List.map tr_explicit_inst flds in
-      let e1 =
-        { pos  = Position.join e1.pos fpos;
-          data = EPoly(e1, inst)
-        } in
-      tr_expr_app e1 es
-    end
+  | EApp(e1, es)   -> tr_apply e1 es
   | EMethodCall(e1, name, es) ->
     let pos = Position.join e1.pos name.pos in
     let e1 = { pos; data = Raw.EMethod(e1, name.data) } in
-    tr_expr_app (tr_expr e1) es
+    tr_apply e1 es
   | EDefs(defs, e) -> make (EDefs(tr_defs defs, tr_expr e))
   | EMatch(e, cls) -> make (EMatch(tr_expr e, List.map tr_match_clause cls))
   | EHandler(h, hcs) ->
     let e = tr_expr h in
     let (rcs, fcs) = map_h_clauses tr_h_clause hcs in
     make (EHandler(e, rcs, fcs))
-  | EEffect { label; args; resumption; body } ->
+  | EHandlerFn(defs, cap_e, hcs) ->
+    let defs  = tr_defs defs in
+    let cap_e = tr_expr cap_e in
+    let (rcs, fcs) = map_h_clauses tr_h_clause hcs in
+    make (EHandlerFn(defs, cap_e, rcs, fcs))
+  | EEffect { label; mode; args; resumption; body } ->
     let (pos, res) =
       match resumption with
       | None     -> (e.pos, make (PId(false, IdVar("resume"))))
       | Some res -> (Position.join res.pos e.pos, tr_pattern res)
     in
-    let e = EEffect(Option.map tr_expr label, res, tr_expr body) in
+    let e = EEffect(Option.map tr_expr label, mode, res, tr_expr body) in
     make (tr_function args { pos; data = e }).data
   | EExtern name -> make (EExtern name)
-  | EAnnot(e, tp) -> make (EAnnot(tr_expr e, tr_type_expr tp))
+  | EAnnot(e, AnnotTotal tp) ->
+    make (EAnnotTotal(tr_expr e, tr_type_expr tp))
+  | EAnnot(e, AnnotType tp) ->
+    begin match tr_eff_type tp with
+    | None,     tp -> make (EAnnot(tr_expr e, tp))
+    | Some eff, tp -> make (EAnnotEff(tr_expr e, tp, eff))
+    end
   | EIf(e, e1, e2) ->
     let (e1, e2) =
       match e2 with
@@ -599,7 +626,7 @@ and tr_expr (e : Raw.expr) =
     | ";" ->
       let lhs = annot_tp exp1 RawTypes.unit in
       tr_expr (make (Raw.EDefs(
-        [make ([], Raw.DLet(make Raw.EWildcard, lhs))],
+        [make ([], Raw.DLet(make Raw.EWildcard, None, lhs))],
         exp2
       )))
     | _ ->
@@ -668,17 +695,18 @@ and tr_explicit_inst (fld : Raw.field) =
     Error.fatal (Error.desugar_error fld.pos)
   | FldNameFn (n, es, e) ->
     make (IVal(n, tr_poly_expr_def ({pos = fld.pos; data = EFn(es, e)})))
-  | FldNameEffectFn (n, label, es, resumption, e) ->
-    make (IVal(n, tr_poly_expr_def
-      { pos = fld.pos;
-        data = EEffect({label; args = es; resumption; body = e})
+  | FldNameEffectFn { name; mode; label; args; resumption; body } ->
+    make (IVal(name, tr_poly_expr_def
+      { pos  = fld.pos;
+        data = EEffect({label; mode; args; resumption; body})
       }))
 
 and tr_def (pos : Position.t) (def : Raw.def_data) =
   let make data = { data = data; pos = pos } in
   let make_attr data = (([] : Raw.attribute list), data) in 
   match def with
-  | DLet(p, e) ->
+  | DLet(p, annot, e) ->
+    let e = add_annot_opt e annot in
     make_attr 
       [ match tr_let_pattern p with
         | LP_Id id ->
@@ -688,7 +716,8 @@ and tr_def (pos : Position.t) (def : Raw.def_data) =
         | LP_Pat p ->
           make (DLetPat(p, tr_expr e))
       ]
-  | DMethod(p, e) ->
+  | DMethod(p, annot, e) ->
+    let e = add_annot_opt e annot in
     make_attr 
       [ match tr_let_pattern p with
         | LP_Id (IdVar x) ->

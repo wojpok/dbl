@@ -84,8 +84,8 @@ let eff_var_to_sexpr =
 let constr_to_sexpr c =
   SExpr.List [
     eff_var_to_sexpr c.eff_var;
-    List [ Sym "if";     IncrSAT.Formula.to_sexpr c.pformula ];
-    List [ Sym "unless"; IncrSAT.Formula.to_sexpr c.nformula ];
+    List [ Sym "if";     T.Formula.to_sexpr c.pformula ];
+    List [ Sym "unless"; T.Formula.to_sexpr c.nformula ];
     Sym "<:";
     T.Effct.to_sexpr c.rhs_effect
   ]
@@ -112,7 +112,7 @@ let add_irrelevant_constr st c =
   that normalizes the constraints again. *)
 let get_gvar eff =
   match T.Effct.view eff with
-  | ([], [(gv, p)]) when IncrSAT.Formula.is_true p -> gv
+  | ([], [(gv, p)]) when T.Formula.is_true p -> gv
   | _ ->
     InterpLib.InternalError.report
       ~reason:"Violation of constraint simplification invariant: \
@@ -159,7 +159,7 @@ let is_gvar_irrelevant st gv =
   variable. *)
 let normalize_tvar_constr st orig eff2 (x, p) =
   let nformula = T.Effct.lookup_tvar eff2 x in
-  if IncrSAT.Formula.implies p nformula then
+  if T.Formula.implies p nformula then
     (* The constraint is trivially satisfied. *)
     []
   else if is_eff_irrelevant st eff2 then begin
@@ -181,7 +181,7 @@ let normalize_tvar_constr st orig eff2 (x, p) =
   generalizable variable. *)
 let normalize_gvar_constr st orig eff2 (gv, p) =
   let nformula = T.Effct.lookup_gvar eff2 gv in
-  if IncrSAT.Formula.implies p nformula then
+  if T.Formula.implies p nformula then
     (* The constraint is trivially satisfied. *)
     []
   else if is_gvar_irrelevant st gv && is_eff_irrelevant st eff2 then begin
@@ -213,7 +213,7 @@ let normalize st (c : Constr.t) =
 let to_constr (c : constr) =
   let eff1 = T.Effct.guard (effect_of_eff_var c.eff_var) c.pformula in
   let eff2 =
-    if IncrSAT.Formula.is_true c.nformula then
+    if T.Formula.is_true c.nformula then
       c.rhs_effect
     else
       T.Effct.join c.rhs_effect (T.Effct.guard eff1 c.nformula)
@@ -228,7 +228,7 @@ let to_constr (c : constr) =
   not in the outer scope ([st.outer_scope]) and that [eff] does not contain
   [gv] itself. *)
 let set_gvar st gv eff =
-  assert (IncrSAT.Formula.is_false (T.Effct.lookup_gvar eff gv));
+  assert (T.Formula.is_false (T.Effct.lookup_gvar eff gv));
   assert (not (T.GVar.in_scope gv st.outer_scope));
   let (_, eff_gvs) = T.Effct.view eff in
   let eff_gvs =
@@ -306,10 +306,10 @@ let build_single_upper_bounds st bnd (c : constr) =
     else if T.GVar.Set.mem gv st.pgvs then
       (* Variable occurs positively, ignore it. *)
       bnd
-    else if not (IncrSAT.Formula.is_true c.pformula) then
+    else if not (T.Formula.is_true c.pformula) then
       (* Upper-bound might be trivially satisfied. *)
       T.GVar.Map.add gv None bnd
-    else if not (IncrSAT.Formula.is_false c.nformula) then
+    else if not (T.Formula.is_false c.nformula) then
       (* Upper-bound might be trivially satisfied. *)
       T.GVar.Map.add gv None bnd
     else
@@ -338,7 +338,7 @@ let rule_move_up_negative st cs =
         constraints it is impossible, but such constraints may appear after
         setting some generalizable variables in this loop. For instance, when
         we have [a <: b] and [b <: a]. *)
-      if IncrSAT.Formula.is_false (T.Effct.lookup_gvar eff gv) then
+      if T.Formula.is_false (T.Effct.lookup_gvar eff gv) then
         set_gvar st gv eff)
     bounds;
   cs
@@ -367,12 +367,12 @@ let rule_move_up_negative st cs =
     cannot violate any constraint. *)
 let join_lower_bound gv lb (c : constr) =
   let p = T.Effct.lookup_gvar c.rhs_effect gv in
-  if IncrSAT.Formula.is_false p then
+  if T.Formula.is_false p then
     lb
   else
     T.Effct.join lb
       (T.Effct.guard (effect_of_eff_var c.eff_var)
-        (IncrSAT.Formula.conj c.pformula p))
+        (T.Formula.conj c.pformula p))
 
 let set_to_join_of_lower_bounds st cs gv =
   let lower_bound = List.fold_left (join_lower_bound gv) T.Effct.pure cs in
@@ -389,6 +389,128 @@ let rule_move_down_variant st cs =
   cs
 
 (* ========================================================================= *)
+(** Rule: fast cycle elimination *)
+
+(** Eliminates simple cycles in the set of constraints. A cycle is simple if it
+  is a strongly connected component in a graph where nodes are effect
+  variables and edges are constraints of the form [ev1 <: ev2 ? p].
+  Constraints that have guards on the left-hand-side are ignored. This rule
+  is subsumed by [rule_subst_equality], but it is much faster to apply, so we
+  use it as a separate rule. *)
+
+(** Subeffect graphs *)
+module Graph = struct
+  type t = eff_var list EffVarMap.t
+
+  let empty = EffVarMap.empty
+
+  let neighbors graph ev =
+    match EffVarMap.find_opt ev graph with
+    | None      -> []
+    | Some neig -> neig
+
+  let add_edge graph ev1 ev2 =
+    EffVarMap.add ev1 (ev2 :: neighbors graph ev1) graph
+end
+
+(** Build the subeffect graph from the constraints. *)
+let build_subeffect_graph cs =
+  let add_to_graph graph (c : constr) =
+    (* Ignore guarded constraints. *)
+    if not (T.Formula.is_true c.pformula) then graph
+    else if not (T.Formula.is_false c.nformula) then graph
+    else
+      match T.Effct.view c.rhs_effect with
+      | ([(x, _)], [])    ->
+        Graph.add_edge graph c.eff_var (TVar x)
+      | ([], [(gv, _)]) ->
+        Graph.add_edge graph c.eff_var (GVar (T.Effct.gvar gv))
+      | _               -> graph
+  in
+  List.fold_left add_to_graph Graph.empty cs
+
+type node_state =
+  | Visited
+  | OnStack of int
+
+(** Find cycles in the subeffect graph using Tarjan's algorithm. Returns
+  a list of strongly connected components. *)
+let find_cycles graph =
+  let result = ref [] in
+  let node_states = ref EffVarMap.empty in
+  let stack = ref [] in
+  let index = ref 0 in
+  let rec build_scc ev st acc =
+    match st with
+    | [] -> assert false (* The stack should contain at least [ev]. *)
+    | top :: st ->
+      node_states := EffVarMap.add top Visited !node_states;
+      if EffVar.compare top ev = 0 then begin
+        (* Finished building the strongly connected component. *)
+        result := (top :: acc) :: !result;
+        st
+      end else
+        build_scc ev st (top :: acc)
+  in
+  let rec visit ev =
+    match EffVarMap.find_opt ev !node_states with
+    | Some Visited           -> !index
+    | Some (OnStack lowlink) -> lowlink
+    | None ->
+      let curr_index = !index in
+      index := curr_index + 1;
+      node_states :=
+        EffVarMap.add ev (OnStack(curr_index)) !node_states;
+      stack := ev :: !stack;
+      let lowlink =
+        List.fold_left
+          (fun lowlink ev2 -> min lowlink (visit ev2))
+          curr_index
+          (Graph.neighbors graph ev)
+      in
+      if lowlink = curr_index then
+        (* Found a strongly connected component *)
+        stack := build_scc ev !stack [];
+      lowlink
+  in
+  EffVarMap.iter (fun ev _ -> ignore (visit ev)) graph;
+  !result
+
+(** Pick a root effect variable from a cycle. The root is chosen to be
+  type variable (non-generalizable) if any, otherwise an arbitrary
+  generalizable variable. *)
+let pick_root cycle =
+  assert (not (List.is_empty cycle));
+  match
+    List.find_opt
+      (function TVar _ -> true | GVar _ -> false)
+      cycle
+  with
+  | Some ev -> ev
+  | None    -> List.hd cycle
+
+(** Collapse a cycle by setting all generalizable variables in the cycle
+  to the root effect variable. *)
+let collapse_cycle st root cycle =
+  let root_eff = effect_of_eff_var root in
+  cycle |> List.iter
+    (fun ev ->
+      if EffVar.compare ev root <> 0 then
+        match ev with
+        | TVar _   -> ()
+        | GVar eff -> set_gvar st (get_gvar eff) root_eff)
+
+let rule_fast_cycle_elim st cs =
+  let graph = build_subeffect_graph cs in
+  let cycles = find_cycles graph in
+  List.iter
+    (fun cycle ->
+      let root = pick_root cycle in
+      collapse_cycle st root cycle)
+    cycles;
+  cs
+
+(* ========================================================================= *)
 (* Rule: remove redundant constraints *)
 
 (** Removes constraints that are implied by other constraints. *)
@@ -398,11 +520,11 @@ let trivial_subeffect eff1 eff2 =
   let (tvs1, gvs1) = T.Effct.view eff1 in
   List.for_all
     (fun (x, p1) ->
-      IncrSAT.Formula.implies p1 (T.Effct.lookup_tvar eff2 x))
+      T.Formula.implies p1 (T.Effct.lookup_tvar eff2 x))
     tvs1 &&
   List.for_all
     (fun (gv, p1) ->
-      IncrSAT.Formula.implies p1 (T.Effct.lookup_gvar eff2 gv))
+      T.Formula.implies p1 (T.Effct.lookup_gvar eff2 gv))
     gvs1
 
 (** Check if constraint [c1] implies constraint [c2]. It is assumed that
@@ -414,10 +536,8 @@ let trivial_subeffect eff1 eff2 =
     if [p2] implies [p1 or n2], and if [p2 and n1] implies [n2];
   - [eff1] is a trivial subeffect of [eff2]. *)
 let constr_implies (c1 : constr) (c2 : constr) =
-  IncrSAT.Formula.implies c2.pformula
-    (IncrSAT.Formula.disj c1.pformula c2.nformula) &&
-  IncrSAT.Formula.implies
-    (IncrSAT.Formula.conj c2.pformula c1.nformula)
+  T.Formula.implies c2.pformula (T.Formula.disj c1.pformula c2.nformula) &&
+  T.Formula.implies (T.Formula.conj c2.pformula c1.nformula)
     c2.nformula &&
   trivial_subeffect c1.rhs_effect c2.rhs_effect
 
@@ -485,10 +605,10 @@ let constr_as_gvar_equality st cs (c : constr) =
     if T.GVar.in_scope gv st.outer_scope then
       (* Variable is in scope, ignore it. *)
       None
-    else if not (IncrSAT.Formula.is_true c.pformula) then
+    else if not (T.Formula.is_true c.pformula) then
       (* Upper-bound is not clear -- might be trivially satisfied. *)
       None
-    else if not (IncrSAT.Formula.is_false c.nformula) then
+    else if not (T.Formula.is_false c.nformula) then
       (* Upper-bound is not clear -- might be trivially satisfied. *)
       None
     else if
@@ -525,6 +645,7 @@ let rules =
     rule_close_positive;
     rule_move_up_negative;
     rule_move_down_variant;
+    rule_fast_cycle_elim;
     rule_remove_redundant;
     rule_subst_equality;
   ]

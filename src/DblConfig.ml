@@ -23,6 +23,17 @@ let local_mod_prefix = "Main"
 let lib_search_dirs   : string list ref = ref [ ]
 let local_search_dirs : string list ref = ref [ ]
 
+(** Set to true, when other options force the REPL mode. *)
+let force_repl = ref false
+
+(** List of files to load at startup. *)
+let startup_files : string list ref = ref [ ]
+
+(** Add file to the list of files to load at startup. *)
+let load_file_at_startup fname =
+  force_repl := true;
+  startup_files := !startup_files @ [ fname ]
+
 let display_error_context = ref true
 
 let print_colors_auto () =
@@ -50,9 +61,12 @@ let test_tagless = ref false
 let test_active (tags : string list) =
   match tags with
   | [] -> !test_tagless
-  | _  -> 
-    List.exists 
+  | _  ->
+    List.exists
       (fun s -> List.exists (fun g -> Dune_glob.V1.test g s) !test_globs) tags
 
 (** Use `show` method for pretty-printing in REPL. *)
 let repl_show_printing = ref true
+
+(**  Instantiate unsolved unification variables of `type` kind to Unit *)
+let instantiate_type_uvars = ref false

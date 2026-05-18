@@ -10,7 +10,7 @@ let usage_string =
 let cli_lib_search_dirs = ref []
 let cli_local_search_dirs = ref []
 
-let include_cli_search_dirs () = 
+let include_cli_search_dirs () =
   DblConfig.lib_search_dirs :=
     List.rev_append !cli_lib_search_dirs !DblConfig.lib_search_dirs;
   DblConfig.local_search_dirs :=
@@ -37,17 +37,25 @@ let cmd_args_options = Arg.align
     Arg.Clear Pipeline.use_stdlib,
     " Do not use the standard library";
 
+    "-timings",
+    Arg.Set Pipeline.timings,
+    " Print timings of pipeline stages to stderr";
+
     "-verbose-internal-errors",
     Arg.Set InterpLib.InternalError.verbose,
     " Make internal errors more verbose (for debugging only)";
 
     "-L",
     Arg.String (fun p -> cli_lib_search_dirs := p :: !cli_lib_search_dirs),
-    " Add a path to library search directories";
+    "PATH Add PATH to library search directories";
 
     "-I",
     Arg.String (fun p -> cli_local_search_dirs := p :: !cli_local_search_dirs),
-    " Add a path to local search directories";
+    "PATH Add PATH to local search directories";
+
+    "-load",
+    Arg.String DblConfig.load_file_at_startup,
+    "FILE Load definitions from FILE at startup (only in REPL mode)";
 
     "-no-error-context",
     Arg.Clear DblConfig.display_error_context,
@@ -64,16 +72,20 @@ let cmd_args_options = Arg.align
     " Run tagless tests";
 
     "-test-tags",
-    Arg.String 
-      (fun s -> String.split_on_char ',' s 
-      |> List.map String.trim 
-      |> List.map DblConfig.compile_glob 
+    Arg.String
+      (fun s -> String.split_on_char ',' s
+      |> List.map String.trim
+      |> List.map DblConfig.compile_glob
       |> fun s -> DblConfig.test_globs := !DblConfig.test_globs @ s),
-    " Run tagged tests matching globs";
-  
+    "GLOBS Run tagged tests matching GLOBS (comma-separated list of globs)";
+
     "-no-show-printing",
     Arg.Clear DblConfig.repl_show_printing,
     " Disable REPL from using method `show' for pretty-printing.";
+
+    "-instantiate-type-uvars",
+    Arg.Set DblConfig.instantiate_type_uvars,
+    " Instantiates unsolved unification variables of `type` kind to Unit";
   ]
 
 let fname = ref None
@@ -94,6 +106,12 @@ let _ =
   try
     match !fname with
     | None       -> Pipeline.run_repl ()
+    | Some _ when !DblConfig.force_repl ->
+      Printf.eprintf
+        "A file was provided, but other options force REPL mode.\n\
+        See %s -help for details.\n"
+        Sys.argv.(0);
+      exit 2
     | Some fname -> Pipeline.run_file fname
   with
   | InterpLib.Error.Fatal_error -> exit 1
