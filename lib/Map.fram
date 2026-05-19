@@ -479,128 +479,109 @@ let rec split compareWithPivot tree =
 
 parameter ~onError
 
+## Map module signature
 pub data Map Key = Map of {
-  T
 
- {## @brief Creates empty map
-   ##}
+  {## Map type constructor. ##}
+  T : type -> type
+
+  {## Creates empty map. ##}
   , empty : {Val} -> T Val
 
- {## @brief Method to testing whether given map is empty or not
-   # @return True if it's empty false otherwise
-   ##}
+  {## Tests whether given map is empty or not. ##}
   , method isEmpty : {Val} -> T Val ->[] Bool
 
 
- {## @brief Method to get size of map
-   # @return Integer that is a size of map
-   ##}
+  {## Gets the size of map. ##}
   , method size : {Val} -> T Val ->[] Int
 
- {## @brief Method for inserting element to the map
-   # @param Key which will be inserted to the map
-   # @param Value which will be inserted to the map
-   # @return Map with inserted value
-   ##}
-  , method insert : {Val} -> T Val ->
-      Key -> Val ->[] T Val
+  {## Inserts element to the map.
 
- {## @brief Method for inserting element to the map
-   # @param Key which will be inserted to the map
-   # @param Value which will be inserted to the map
-   # @return Map with inserted value
-   # and boolean value if the value was changed
-   # if the key already existed in map
-   ##}
-  , method insertChange : {Val} -> T Val ->
-      Key -> Val ->[] (Pair (T Val) Bool)
+    @param Key which will be inserted to the map.
+    @param Value which will be inserted to the map.
+  ##}
+  , method insert : {Val} -> T Val -> Key -> Val ->[] T Val
 
- {## @brief Method for removing key from the map
-   # @param Key which will be removed to the map
-   # @return Map with removed key
+   {##
+     Inserts element to the map. Returns additional flag that marks if
+     structure has been modified.
+
+     @param Key which will be inserted to the map.
+     @param Value which will be inserted to the map.
    ##}
+  , method insertChange : {Val} -> T Val -> Key -> Val ->[] (Pair (T Val) Bool)
+
+  {## Removes key from the map.
+
+    @param Key which will be removed to the map.
+  ##}
   , method remove : {Val} -> T Val -> Key ->[] T Val
 
- {## @brief Method for removing key from the map
-   # @param Key which will be removed to the map
-   # @return Map with removed key
-   #  and boolean value if the map was changed
-   ##}
-  , method removeChange : {Val} -> T Val ->
-      Key ->[] (Pair (T Val) Bool)
+  {##
+    Removes key from the map. Returns additional flag that marks if
+    structure has been modified.
 
- {## @brief Method for checking if a given key is present in a map
-   ##}
-  , method member : {Val} -> T Val -> Key ->[] Bool
+    @param Key which will be removed to the map.
+  ##}
+  , method removeChange : {Val} -> T Val -> Key ->[] (Pair (T Val) Bool)
 
- {## @brief Method for getting value mapping from a key
-   #   returns None if key is not found
-   ##}
+  {## Checks if a given key is present in a map.  ##}
+  , method mem : {Val} -> T Val -> Key ->[] Bool
+
+  {## Gets value for a given key. Returns None if key was not found. ##}
   , method find : {Val} -> T Val -> Key ->[] Option Val
 
- {## @brief Method for getting value mapping from a key,
-   #   calls `~onError` if key is not found
-   ##}
+  {## Gets value for a given key. Calls `~onErroe` if key was not found. ##}
   , method findErr :
     {Val, Err, ~onError : Unit ->[Err] Val} -> T Val -> Key ->[Err] Val
 
- {## @brief Method to update mapping on a key using a function
-   # @param key
-   # @param f is called with Option Val based on if the key has mapping
-   #     in the input tree and should return Option Val to update the tree
-   # @return updated tree
-   ##}
-  , method update : {Val,E} -> T Val -> Key ->
-      (Option Val ->[E] Option Val) ->[E] T Val
+  {##
+    Updates mapping on a key using a function. This method may be used to
+    insert, delete and change value.
+  ##}
+  , method update :
+      {Val,E} -> T Val -> Key -> (Option Val ->[E] Option Val) ->[E] T Val
 
- {## @brief Method to fold left through structure of map
-   # @param Function that receives key, value and accumulator
-   # @param Accumulator
-   # @return Result of applying function on keys
-   # and values of map and accumulator
-   ##}
+  {## Folds left through structure of map
+    @param Function that receives key, value and accumulator
+    @param Accumulator
+    @return Result of applying function on keys
+      and values of map and accumulator
+  ##}
   , method foldl : {Val, type A,E} -> T Val ->
       (Key -> Val -> A ->[E] A) -> A ->[E] A
 
- {## @brief Method to fold right through structure of map
-   # @param Function that receives key, value and accumulator
-   # @param Accumulator
-   # @return Result of applying function on keys
-   # and values of map and accumulator
+  {## Folds right through structure of map.
+    @param Function that receives key, value and accumulator
+    @param Accumulator
+    @return Result of applying function on keys and values of map and
+       accumulator
    ##}
-  , method foldr : {Val, type A,E} -> T Val ->
-      (Key -> Val -> A ->[E] A) -> A ->[E] A
+  , method foldr :
+      {Val, type A,E} -> T Val -> (Key -> Val -> A ->[E] A) -> A ->[E] A
 
- {## @brief Method that returns list of pairs (key,value)
-   ##}
+  {## Returns list of all mappings (pairs of keys and values). ##}
   , method toList : {Val} -> T Val ->[] List (Pair Key Val)
 
- {## @brief Method that returns list of values
-   ##}
+  {## Returns list of values. ##}
   , method toValueList : {Val} -> T Val ->[] List Val
 
- {## @brief Method that returns list of keys
-   ##}
-  , method domain : {Val} -> T Val ->[] List Key
+  {## Returns returns list of keys. ##}
+  , method toKeyList : {Val} -> T Val ->[] List Key
 
- {## @brief Method that maps all values using given function
-   ##}
-  , method mapVal : {Val, type A, E} -> T Val ->
-      (Val ->[E] A) ->[E] T A
+  {## Maps all values in given map.  ##}
+  , method mapVal : {Val, type A, E} -> T Val -> (Val ->[E] A) ->[E] T A
 
- {## @brief Method that maps all (key,value) in a map to (key, func key)
-   ##}
-  , method mapKey : {Val, type A,E} -> T Val ->
-      (Key ->[E] A) ->[E] T A
+  {## Maps all keys in a map to values.  ##}
+  , method mapKey : {Val, type A,E} -> T Val -> (Key ->[E] A) ->[E] T A
 
- {##  @brief Method that applies function to every key and value
-   ##}
+  {## Iterates over all keys and values. ##}
   , method iter : {Val,E} -> T Val ->
       (Key -> Val ->[E] Unit) ->[E] Unit
 
- {## @brief Method that joins two maps
-   # @param Function that resolves conflicts
-   # if maps have the same key
+  {## Joins two maps.
+   
+    @param Function that resolves conflicts  if maps have the same key.
    ##}
   , method union : {Val,E} -> T Val -> T Val ->
       (Key -> Val -> Val ->[E] Val) ->[E] T Val
@@ -767,7 +748,7 @@ let toList tree = foldr (fn key value acc => (key, value) :: acc) tree []
 
 let toValueList tree = foldr (fn key value acc => value :: acc) tree []
 
-let domain tree = foldr (fn key value acc => key :: acc) tree []
+let toKeyList tree = foldr (fn key value acc => key :: acc) tree []
 
 data MapT Key Val = MapT of Tree (Pair Key Val)
 
@@ -789,7 +770,7 @@ let removeT (MapT tree) (key : Key) = MapT (remove tree key)
 let removeChangeT (MapT tree) (key : Key) =
   let (tree,bool) = remove' tree key in (MapT tree, bool)
 
-let memberT (MapT tree) (key : Key) = member tree key
+let memT (MapT tree) (key : Key) = member tree key
 
 let findT (MapT tree) (key : Key) = find tree key
 
@@ -805,7 +786,7 @@ let toListT (MapT tree) = toList tree
 
 let toValueListT (MapT tree) = toValueList tree
 
-let domainT (MapT tree) =  domain tree
+let toKeyListT (MapT tree) = toKeyList tree
 
 let mapVal (MapT tree) func = MapT (map tree func)
 
@@ -829,7 +810,7 @@ pub let make {Key, method compare : Key -> Key ->[] Ord} = Map {
   , method insertChange = insertChangeT
   , method remove = removeT 
   , method removeChange = removeChangeT 
-  , method member = memberT 
+  , method mem = memT 
   , method find = findT 
   , method findErr = fn {~onError} => findErrT 
   , method update = updateT 
@@ -837,7 +818,7 @@ pub let make {Key, method compare : Key -> Key ->[] Ord} = Map {
   , method foldr = mapFoldr
   , method toList = toListT
   , method toValueList = toValueListT
-  , method domain = domainT
+  , method toKeyList = toKeyListT
   , method mapVal = mapVal
   , method mapKey = mapKey
   , method iter = iterT

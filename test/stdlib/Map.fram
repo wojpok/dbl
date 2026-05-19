@@ -32,8 +32,8 @@ testSuite "Basic tests" (fn _ =>
   testCase "isEmpty after removal" (fn _ =>
     assertTrue (y.remove 1 >. isEmpty));
 
-  testCase "domain" (fn _ =>
-    assertEq z.domain [1,2,3,4]);
+  testCase "toKeyList" (fn _ =>
+    assertEq z.toKeyList [1,2,3,4]);
 
   testCase "toValueList" (fn _ =>
     assertEq z.toValueList [1,1,2,3]);
@@ -48,8 +48,8 @@ testSuite "Basic tests" (fn _ =>
       (z.foldl (fn key val acc => key :: acc) []) 
       [4,3,2,1]);
 
-  testCase "member" (fn _ =>
-    assertTrue (z.member 1));
+  testCase "mem" (fn _ =>
+    assertTrue (z.mem 1));
 
   testCase "find" (fn _ =>
     assertTrue
@@ -127,11 +127,11 @@ testSuite "Randomized test" (fn _ =>
       let bit = 1 << key
       in
       if (bitSet &&& bit) == 0 then (
-        assertFalse (map.member key);
+        assertFalse (map.mem key);
         assertEq (map.find key >.unwrapOr (-1)) (-1);
         assertEq (map.findErr {~onError = fn () => -1} key) (-1))
       else (
-        assertTrue (map.member key);
+        assertTrue (map.mem key);
         assertEq (map.find key >.unwrapOr (-1)) (key + (bitMap &&& bit));
         assertEq (map.findErr {~onError = fn () => -1} key)
           (key + (bitMap &&& bit)));
@@ -141,7 +141,7 @@ testSuite "Randomized test" (fn _ =>
         let bitSet = bitSet ||| bit
         let bitMap = bitMap ^^^ (bitMap &&& bit) ^^^ v
         in
-        assertTrue (map.member key);
+        assertTrue (map.mem key);
         assertEq (map.find key >.unwrapOr (-1)) (key + v);
         assertEq (map.findErr {~onError = fn () => -1} key) (key + v);
         randTest map bitSet bitMap (n - 1))
@@ -149,7 +149,7 @@ testSuite "Randomized test" (fn _ =>
         let map = map.remove key
         let bitSet = bitSet ^^^ (bitSet &&& bit)
         in
-        assertFalse (map.member key);
+        assertFalse (map.mem key);
         assertEq (map.find key >.unwrapOr (-1)) (-1);
         assertEq (map.findErr {~onError = fn () => -1} key) (-1);
         randTest map bitSet bitMap (n - 1))
