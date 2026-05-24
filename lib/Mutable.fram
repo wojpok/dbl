@@ -77,7 +77,7 @@ pub let ioMut = Mut {E=IO}
 
   The mutability effect can be handled locally, provided that the handled
   computation's effects are affine. ##}
-pub let hMut {type R} (f : {E : effect} -> Mut E ->[E, aff R] _) =
+pub let hMut {type R} (f : {E : effect} -> Mut E ->[aff E, aff R] _) =
   handle _ / E = () in
   f {E} Mut
 
@@ -86,7 +86,7 @@ pub let hMut {type R} (f : {E : effect} -> Mut E ->[E, aff R] _) =
   This function is similar to `hMut`, but it allows the handled expression to
   have other effects. However, this function is not pure: it has the `IO`
   effect. ##}
-pub let hMutIO {type R} (f : {E : effect} -> Mut E ->[aff E,R] _) =
+pub let hMutIO {type R} (f : {E : effect} -> Mut E ->[aff E, aff R] _) =
   f {E=IO} ioMut
 
 {# ========================================================================= #}
@@ -116,7 +116,7 @@ pub method ref {E, type T} (self : Mut E) =
 {## Write-only elements of an array.
 
   See the `at` method of the `Array` type for details. ##}
-pub data ArrayElem E T = { set : T ->[E] Unit }
+pub data ArrayElem E T = { set : T ->[aff E] Unit }
 
 let unsafeGetArray {E, type T} =
   extern dbl_arrayGet : Array E T -> Int ->[aff E] T
@@ -175,7 +175,7 @@ pub method toList {E} (self : Array E _) =
 {# ------------------------------------------------------------------------- #}
 ## ### Creating new arrays
 
-let unsafeInitArray {E} n (f : _ ->[E] _) =
+let unsafeInitArray {E} n (f : _ ->[aff E] _) =
   let arr = unsafeMakeArray {E} n
   let rec loop (i : Int) =
     if i < n then (
@@ -208,7 +208,7 @@ pub method toArray {E, ~mut : Mut E} (self : List _) =
 ##}
 pub method pureInitArray
   {E, ~__line__, ~__file__}
-  (self : Mut E) (n : Int) (f : _ ->[E] _) =
+  (self : Mut E) (n : Int) (f : _ ->[aff E] _) =
     assert {msg="Array of negative size"} (n >= 0);
     unsafeInitArray {E} n f
 
