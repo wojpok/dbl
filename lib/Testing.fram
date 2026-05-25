@@ -130,8 +130,8 @@ let mkTestCase
     (name : String)
     (f : { E_TL : effect
          , E_TT : effect
-         , ~testLogger : TestLogger (aff E_TL)
-         , ~testCaseTracker : TestCaseTracker (aff E_TT)
+         , ~testLogger : TestLogger E_TL
+         , ~testCaseTracker : TestCaseTracker E_TT
          } -> Unit ->[aff E_TL, aff E_TT] Unit) =
   let loc     = mkLoc
   let body () =
@@ -314,8 +314,8 @@ pub let testCase
     name
     (f : { E_TL
          , E_TT
-         , ~testLogger : TestLogger (aff E_TL)
-         , ~testCaseTracker : TestCaseTracker (aff E_TT)
+         , ~testLogger : TestLogger E_TL
+         , ~testCaseTracker : TestCaseTracker E_TT
          } -> Unit ->[aff E_TL, aff E_TT] Unit) =
   tests := (mkTestCase name f :: tests.get)
 
