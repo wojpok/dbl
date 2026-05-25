@@ -36,4 +36,3 @@ pub let hState (initial : X) =
   return  x => fn _ => x
   finally c => c initial
   end
-
